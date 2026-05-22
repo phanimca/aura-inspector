@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Scan #{{ scan.id }} — Aura Inspector{% endblock %}
+
+{% block extra_head %}
+<style>
+.finding-card { border-left: 3px solid; margin-bottom:.75rem; transition:background .15s; }
+.finding-card:hover { background: var(--bg-card-hover); }
+.finding-card.critical { border-color:#f85149; }
+.finding-card.high     { border-color:#d29922; }
+.finding-card.medium   { border-color:#a371f7; }
+.finding-card.low      { border-color:#388bfd; }
+.finding-card.info     { border-color:#3fb950; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+<div class="container">
+
+  <!-- Breadcrumb + title -->
+  <nav aria-label="breadcrumb" class="mb-2">
+    <ol class="breadcrumb" style="font-size:.82rem;color:#8b949e;">
+      <li class="breadcrumb-item"><a href="/dashboard" style="color:#58a6ff;">Dashboard</a></li>
+      <li class="breadcrumb-item active">Scan #{{ scan.id }}</li>
+    </ol>
+  </nav>
+
+  <div class="d-flex flex-wrap justify-content-between align-items-start mb-4 gap-3">
+    <div>
+      <h4 class="fw-bold mb-1">
+        <i class="bi bi-radar me-1" style="color:#58a6ff;"></i>
+        {{ scan.target_url | replace("https://","") | truncate(50) }}
+      </h4>
+      <p class="text-muted small mb-0">
+        Scan #{{ scan.id }} &middot;
+        {% if scan.scan_type == 'auth' %}Authenticated{% else %}Guest{% endif %} &middot;
+        Started {{ scan.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      {% if scan.status == 'completed' %}
+      <a href="/reports/{{ scan.id }}" class="btn btn-outline-secondary btn-sm" target="_blank">
+        <i class="bi bi-file-earmark-text me-1"></i>Full Report
+      </a>
+      {% endif %}
+      <a href="/scans/new" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-circle me-1"></i>New Scan
+      </a>
+    </div>
+  </div>
+
+  <!-- ── In-progress banner (auto-polls until done) ───────────── -->
+  {% if scan.status in ('pending', 'running') %}
+  <div id="progress-banner" class="card p-4 mb-4 text-center" style="border-color:#58a6ff33;background:#58a6ff11;">
+    <div class="d-flex align-items-center justify-content-center gap-3">
+      <div class="spinner-border text-primary" role="status" style="width:1.5rem;height:1.5rem;"></div>
+      <div>
+        <strong>Scan in progress…</strong>
+        <p class="text-muted small mb-0" id="progress-text">Initialising scanners</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Failed banner ────────────────────────────────────────── -->
+  {% if scan.status == 'failed' %}
+  <div class="card p-4 mb-4" style="border-color:#f8514933;background:#f8514911;">
+    <h6 class="text-danger mb-2"><i class="bi bi-x-circle me-1"></i>Scan Failed</h6>
+    {% if scan.error_message %}
+    <pre class="mb-0" style="font-size:.75rem;max-height:120px;overflow-y:auto;">{{ scan.error_message }}</pre>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ── Summary row ──────────────────────────────────────────── -->
+  {% if scan.status == 'completed' %}
+  <div class="row g-3 mb-4">
+    {% for sev, color in [('critical','#f85149'),('high','#d29922'),('medium','#a371f7'),('low','#388bfd'),('info','#3fb950')] %}
+    <div class="col-6 col-md">
+      <div class="stat-card">
+        <div class="stat-number" style="color:{{ color }};">{{ counts[sev] }}</div>
+        <div class="stat-label">{{ sev | title }}</div>
+      </div>
+    </div>
+    {% endfor %}
+    {% if scan.risk_score > 0 %}
+    <div class="col-6 col-md">
+      <div class="stat-card">
+        <div class="stat-number {% if scan.risk_score >= 70 %}risk-high{% elif scan.risk_score >= 40 %}risk-medium{% else %}risk-low{% endif %}">{{ scan.risk_score }}</div>
+        <div class="stat-label">Risk Score</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- AI summary card -->
+  {% if scan.ai_analysis and scan.ai_analysis.risk_summary %}
+  <div class="card p-4 mb-4" style="border-color:#58a6ff33;">
+    <h6 class="fw-semibold mb-2"><i class="bi bi-robot me-1" style="color:#58a6ff;"></i>AI Analysis Summary</h6>
+    <p class="mb-3" style="color:#c9d1d9;">{{ scan.ai_analysis.risk_summary }}</p>
+    {% if scan.ai_analysis.priority_actions %}
+    <h6 class="fw-semibold mb-2" style="font-size:.85rem;">Priority Actions</h6>
+    <ul class="mb-0">
+      {% for action in scan.ai_analysis.priority_actions %}
+      <li class="mb-1" style="font-size:.85rem;color:#8b949e;">
+        {% if action.urgency == 'immediate' %}<span style="color:#f85149;" class="me-1">🚨</span>{% elif action.urgency == 'short-term' %}<span style="color:#d29922;" class="me-1">⚠️</span>{% else %}<span class="me-1">📋</span>{% endif %}
+        <span class="badge me-1" style="font-size:.7rem;background:#30363d;color:#8b949e;">{{ action.urgency | upper }}</span>
+        {{ action.action }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% endif %}
+
+  <!-- ── Findings list ─────────────────────────────────────────── -->
+  {% if findings %}
+  <!-- Filter buttons -->
+  <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+    <span class="text-muted small me-1">Filter:</span>
+    <button class="btn btn-sm btn-outline-secondary active" onclick="filterFindings('all', this)">All ({{ findings | length }})</button>
+    {% for sev, color in [('critical','#f85149'),('high','#d29922'),('medium','#a371f7'),('low','#388bfd')] %}
+    {% if counts[sev] > 0 %}
+    <button class="btn btn-sm" style="background:{{ color }}22;color:{{ color }};border:1px solid {{ color }}44;" onclick="filterFindings('{{ sev }}', this)">
+      {{ sev | title }} ({{ counts[sev] }})
+    </button>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <div id="findings-list">
+    {% for finding in findings %}
+    <div class="card finding-card {{ finding.severity }} p-4" data-sev="{{ finding.severity }}">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+        <div class="d-flex align-items-center gap-2">
+          <span class="severity-badge badge-{{ finding.severity }}">{{ finding.severity | upper }}</span>
+          <strong style="font-size:.95rem;">{{ finding.title }}</strong>
+        </div>
+        <div class="d-flex gap-2 flex-shrink-0">
+          {% if finding.owasp_ref %}
+          <span class="badge" style="background:#30363d;color:#8b949e;font-size:.72rem;">{{ finding.owasp_ref }}</span>
+          {% endif %}
+          <span class="badge" style="background:#30363d;color:#8b949e;font-size:.72rem;">{{ finding.scanner }}</span>
+        </div>
+      </div>
+
+      <p style="color:#8b949e;font-size:.87rem;" class="mb-2">{{ finding.description }}</p>
+
+      {% if finding.evidence %}
+      <details class="mb-2">
+        <summary style="cursor:pointer;font-size:.8rem;color:#58a6ff;">Evidence</summary>
+        <pre class="mt-2">{{ finding.evidence }}</pre>
+      </details>
+      {% endif %}
+
+      {% if finding.remediation %}
+      <details>
+        <summary style="cursor:pointer;font-size:.8rem;color:#3fb950;">Remediation</summary>
+        <pre class="mt-2">{{ finding.remediation }}</pre>
+      </details>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% elif scan.status == 'completed' %}
+  <div class="card p-5 text-center">
+    <i class="bi bi-shield-check fs-1 mb-3" style="color:#3fb950;"></i>
+    <h5 class="fw-bold mb-1">No findings detected</h5>
+    <p class="text-muted small">The scan completed without identifying security issues.</p>
+  </div>
+  {% endif %}
+
+</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if scan.status in ('pending', 'running') %}
+<script>
+let dots = 0;
+const msgs = ['Fuzzing Aura endpoints', 'Testing IDOR vectors', 'Probing Apex controllers', 'Running AI analysis'];
+let msgIdx = 0;
+
+const banner = document.getElementById('progress-banner');
+const pText  = document.getElementById('progress-text');
+
+function poll() {
+  fetch('/scans/{{ scan.id }}/status')
+    .then(r => r.json())
+    .then(d => {
+      if (d.status === 'running') {
+        dots = (dots + 1) % 4;
+        msgIdx = (msgIdx + 1) % msgs.length;
+        pText.textContent = msgs[msgIdx] + '.'.repeat(dots + 1);
+        setTimeout(poll, 2000);
+      } else {
+        window.location.reload();
+      }
+    })
+    .catch(() => setTimeout(poll, 3000));
+}
+setTimeout(poll, 2000);
+</script>
+{% endif %}
+<script>
+function filterFindings(sev, btn) {
+  document.querySelectorAll('[data-sev]').forEach(el => {
+    el.style.display = (sev === 'all' || el.dataset.sev === sev) ? '' : 'none';
+  });
+  document.querySelectorAll('[onclick^="filterFindings"]').forEach(b => b.classList.remove('active','btn-secondary'));
+  btn.classList.add('active');
+}
+</script>
+{% endblock %}

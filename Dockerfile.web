@@ -1,0 +1,34 @@
+# ── Stage 1: install deps ─────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+COPY requirements.txt requirements-web.txt requirements-ai.txt ./
+RUN pip install --no-cache-dir --prefix=/install \
+    -r requirements.txt \
+    -r requirements-web.txt \
+    -r requirements-ai.txt
+
+# ── Stage 2: lean runtime ─────────────────────────────────────────────────────
+FROM python:3.11-slim
+
+LABEL org.opencontainers.image.title="Aura Inspector Web"
+LABEL org.opencontainers.image.description="Web app with auth, dashboard, and AI security scanning"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR /app
+
+COPY --from=builder /install /usr/local
+COPY src/ src/
+
+# Persistent SQLite database volume mount point
+RUN mkdir -p /app/data
+
+EXPOSE 8080
+
+RUN useradd --create-home --shell /bin/bash appuser && chown -R appuser /app
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "src/web/main.py"]

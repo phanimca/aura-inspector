@@ -1,0 +1,9 @@
+# Optional AI and UI features for Aura Inspector
+# Install with: pip install -r requirements-ai.txt
+#
+# If you only need the CLI, you do NOT need this file.
+# The base CLI requires only: requests (see requirements.txt)
+
+gradio>=4.0.0
+openai>=1.0.0
+tenacity>=8.2.0

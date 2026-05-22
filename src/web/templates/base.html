@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}Aura Inspector{% endblock %}</title>
+  <!-- Bootstrap 5 dark -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <style>
+    :root {
+      --brand-blue: #58a6ff;
+      --brand-cyan: #39d3f7;
+      --bg-deep: #0d1117;
+      --bg-card: #161b22;
+      --bg-card-hover: #1c2128;
+      --border-muted: #30363d;
+      --text-muted-custom: #8b949e;
+    }
+    body { background-color: var(--bg-deep); color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .navbar { background-color: #161b22 !important; border-bottom: 1px solid var(--border-muted); }
+    .navbar-brand { font-weight: 700; font-size: 1.2rem; color: var(--brand-blue) !important; }
+    .card { background-color: var(--bg-card); border: 1px solid var(--border-muted); border-radius: 10px; }
+    .card:hover { background-color: var(--bg-card-hover); }
+    /* Severity badges */
+    .badge-critical { background: #f8514933; color: #f85149; border: 1px solid #f8514966; }
+    .badge-high     { background: #d2992233; color: #d29922; border: 1px solid #d2992266; }
+    .badge-medium   { background: #a371f733; color: #c396f5; border: 1px solid #a371f766; }
+    .badge-low      { background: #388bfd33; color: #79c0ff; border: 1px solid #388bfd66; }
+    .badge-info     { background: #3fb95033; color: #56d364; border: 1px solid #3fb95066; }
+    .severity-badge { display:inline-block; padding:.2rem .6rem; border-radius:6px; font-size:.75rem; font-weight:600; }
+    /* Stat cards */
+    .stat-card { background: var(--bg-card); border: 1px solid var(--border-muted); border-radius:12px; padding:1.5rem; text-align:center; }
+    .stat-number { font-size:2.2rem; font-weight:700; color: var(--brand-blue); }
+    .stat-label  { font-size:.85rem; color: var(--text-muted-custom); margin-top:.25rem; text-transform:uppercase; letter-spacing:.08em; }
+    /* Scan status */
+    .status-pending   { color:#8b949e; }
+    .status-running   { color:#58a6ff; }
+    .status-completed { color:#3fb950; }
+    .status-failed    { color:#f85149; }
+    /* Risk score ring color */
+    .risk-low    { color:#3fb950; }
+    .risk-medium { color:#d29922; }
+    .risk-high   { color:#f85149; }
+    /* Form controls dark */
+    .form-control, .form-select { background: #0d1117; border-color: var(--border-muted); color: #e6edf3; }
+    .form-control:focus, .form-select:focus { background: #0d1117; border-color: var(--brand-blue); color:#e6edf3; box-shadow: 0 0 0 .2rem rgba(88,166,255,.15); }
+    /* Alert customisation */
+    .alert-danger-custom { background:#f8514920; border:1px solid #f85149; color:#f85149; border-radius:8px; padding:.75rem 1rem; }
+    .alert-success-custom { background:#3fb95020; border:1px solid #3fb950; color:#3fb950; border-radius:8px; padding:.75rem 1rem; }
+    /* Sidebar-less layout */
+    .content-wrapper { padding: 2rem 0; min-height: calc(100vh - 60px); }
+    footer { border-top: 1px solid var(--border-muted); color: var(--text-muted-custom); font-size:.85rem; }
+    /* Code blocks */
+    pre { background: #0d1117; border: 1px solid var(--border-muted); border-radius:8px; padding:1rem; font-size:.82rem; color:#e6edf3; overflow-x:auto; }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- ── Navigation ──────────────────────────────────────────────────── -->
+<nav class="navbar navbar-expand-lg sticky-top">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <i class="bi bi-shield-lock-fill me-1"></i>Aura Inspector
+    </a>
+    <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMain">
+      {% if user %}
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+          <a class="nav-link {% if request.url.path == '/dashboard' %}active{% endif %}" href="/dashboard">
+            <i class="bi bi-speedometer2 me-1"></i>Dashboard
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.url.path == '/scans/new' %}active{% endif %}" href="/scans/new">
+            <i class="bi bi-plus-circle me-1"></i>New Scan
+          </a>
+        </li>
+      </ul>
+      <div class="d-flex align-items-center gap-3">
+        {% if user.is_admin %}
+        <span class="badge bg-warning text-dark"><i class="bi bi-shield-fill me-1"></i>Admin</span>
+        {% endif %}
+        <div class="dropdown">
+          <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="bi bi-person-circle me-1"></i>{{ user.username }}
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" style="background:var(--bg-card);border-color:var(--border-muted);">
+            <li><span class="dropdown-item-text text-muted small">{{ user.email }}</span></li>
+            <li><hr class="dropdown-divider" style="border-color:var(--border-muted)"/></li>
+            <li><a class="dropdown-item" href="/logout"><i class="bi bi-box-arrow-right me-1"></i>Logout</a></li>
+          </ul>
+        </div>
+      </div>
+      {% else %}
+      <div class="ms-auto d-flex gap-2">
+        <a href="/login" class="btn btn-outline-light btn-sm">Login</a>
+        <a href="/register" class="btn btn-primary btn-sm">Get Started</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+<!-- ── Main Content ──────────────────────────────────────────────────── -->
+{% block content %}{% endblock %}
+
+<!-- ── Footer ──────────────────────────────────────────────────────── -->
+<footer class="py-4 mt-5">
+  <div class="container text-center">
+    <p class="mb-1">
+      <i class="bi bi-shield-lock-fill me-1" style="color:var(--brand-blue)"></i>
+      <strong>Aura Inspector</strong> &mdash; AI-Powered Salesforce Experience Cloud Security
+    </p>
+    <p class="mb-0 text-muted small">
+      OWASP API Security Top 10 &middot; Apache 2.0 License
+    </p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

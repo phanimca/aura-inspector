@@ -15,15 +15,43 @@
 import requests
 import re, json
 import traceback
+import hashlib
+import urllib3
 from colored_logger import logger
 from urllib.parse import urlparse
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
+from urllib3.exceptions import InsecureRequestWarning
 from http.cookies import SimpleCookie
 
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+urllib3.disable_warnings(InsecureRequestWarning)
 
 USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.16; rv:85.0) Gecko/210100101 Firefox/85.0'
 AURA_ENDPOINTS = ['/s/sfsites/aura','/s/aura','/aura','/sfsites/aura']
+
+def _secret_fingerprint(value):
+	if value in [None, '', 'null']:
+		return 'null'
+	return hashlib.sha256(str(value).encode('utf-8')).hexdigest()[:12]
+
+def _secret_summary(label, value):
+	if value in [None, '', 'null']:
+		return f'{label}=null'
+	return f'{label}=sha256:{_secret_fingerprint(value)} len={len(str(value))}'
+
+def _safe_log_json(value):
+	if isinstance(value, dict):
+		return {
+			key: _safe_log_json(val)
+			for key, val in value.items()
+		}
+	if isinstance(value, list):
+		return [_safe_log_json(item) for item in value]
+	if isinstance(value, str):
+		lower_value = value.lower()
+		if any(token in lower_value for token in ['sid', 'token', 'authorization', 'cookie', 'session']):
+			return '[redacted]'
+		if len(value) > 160:
+			return f'{value[:160]}...[truncated]'
+	return value
 
 class AuraActionHelper:
 	def build_action(act_id, descriptor, params={}):
@@ -160,10 +188,10 @@ class AuraHelper:
 		logger.info(f'Using app: {self.app}')
 		# Retrieve the context including fwuid
 		self.context = self.get_context() if not context else context
-		logger.debug(f'Using context: {self.context}')
+		logger.debug(f'Using context ({_secret_summary("context", self.context)})')
 		# Finally get aura token
 		self.aura_token = self.get_aura_token() if not token else token
-		logger.debug(f'Using token: {self.aura_token}')
+		logger.debug(f'Using token ({_secret_summary("token", self.aura_token)})')
 
 	def build_post_body(self, actions=[], dummy=False):
 		message = {
@@ -255,7 +283,7 @@ class AuraHelper:
 					fwuid = json_resp_data['context']['fwuid']
 				else:
 					logger.critical('No context found in response, aborting')
-					logger.debug(json_resp_data)
+					logger.debug(_safe_log_json(json_resp_data))
 					exit()
 			else:
 				fwuid = fwuid.group(1).strip()
@@ -275,11 +303,11 @@ class AuraHelper:
 		aura_token = 'null'
 		if aura_token_search := re.search(aura_token_pattern, response.text):
 			aura_token = aura_token_search.group(0)
-			logger.verbose(f'Found aura token in page: {aura_token}')
+			logger.verbose(f'Found aura token in page ({_secret_summary("token", aura_token)})')
 		elif 'set-cookie' in response.headers:
 			if aura_token_search := re.search(aura_token_pattern, response.headers['set-cookie']):
 				aura_token = aura_token_search.group(0)
-				logger.verbose(f'Found aura token in cookie: {aura_token}')
+				logger.verbose(f'Found aura token in cookie ({_secret_summary("token", aura_token)})')
 		else:
 			logger.error(f'Aura token not found (probably because SID cookie was not supplied), using null token')
    
@@ -616,7 +644,7 @@ class AuraHelper:
 						for failed_chunk in failed_chunks:
 							all_failed_chunks += failed_chunk
 			else:
-				logger.debug("Unhandled error when getting total count for objects with GraphQL: "+json.dumps(action_response.return_value))
+				logger.debug("Unhandled error when getting total count for objects with GraphQL: "+json.dumps(_safe_log_json(action_response.return_value)))
 		if all_failed_chunks:
 			#Send the failed objects individually by calling the func again and not making chunks
 			logger.verbose(f'Resending failed chunks while counting records with GraphQL: {all_failed_chunks}')
@@ -719,10 +747,10 @@ class AuraHelper:
 		try:
 			rest_req = self.session.get(f'{self.url}{latest_rest_url}', headers=headers)
 			if rest_req.status_code == 200:
-				logger.info(f'REST API is accessible with the provided SID: {self.session.cookies.get("sid")}')
+				logger.info(f'REST API is accessible with the provided session ({_secret_summary("sid", self.session.cookies.get("sid"))})')
 				return True
 			else:
-				logger.info(f'REST API is not accessible using the provided SID: {self.session.cookies.get("sid")}')
+				logger.info(f'REST API is not accessible using the provided session ({_secret_summary("sid", self.session.cookies.get("sid"))})')
 				return False
 		except:
 			logger.debug(traceback.format_exc())

@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Aura Inspector — AI-Powered Salesforce Security{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Hero ────────────────────────────────────────────────────── */
+.hero-section {
+  min-height: 100vh;
+  background: radial-gradient(ellipse 80% 60% at 50% -10%, #0d2850 0%, #0d1117 70%);
+  display: flex; align-items: center; padding: 5rem 0 3rem;
+}
+.gradient-text {
+  background: linear-gradient(135deg, #58a6ff 0%, #39d3f7 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.hero-badge { background:#58a6ff22; border:1px solid #58a6ff55; color:#58a6ff; border-radius:50px; padding:.35rem .9rem; font-size:.8rem; font-weight:600; letter-spacing:.06em; }
+
+/* ── Terminal animation ─────────────────────────────────────── */
+.terminal-window {
+  background:#0a0f1a; border:1px solid #30363d; border-radius:12px;
+  font-family:'Courier New',monospace; font-size:.78rem; color:#56d364;
+  padding:1.5rem; min-height:320px; overflow:hidden;
+  box-shadow: 0 0 60px #58a6ff22;
+}
+.terminal-header { display:flex; gap:.4rem; margin-bottom:1rem; }
+.term-dot { width:12px; height:12px; border-radius:50%; }
+.term-red{background:#f85149;} .term-yellow{background:#d29922;} .term-green{background:#3fb950;}
+.term-prompt { color:#58a6ff; }
+.term-line { opacity:0; transform:translateY(4px); transition:opacity .3s,transform .3s; white-space:pre-wrap; line-height:1.7; }
+.term-line.visible { opacity:1; transform:none; }
+.term-warn  { color:#d29922; }
+.term-crit  { color:#f85149; }
+.term-ok    { color:#3fb950; }
+.term-cursor { display:inline-block; width:8px; height:14px; background:#58a6ff; animation:blink .8s step-end infinite; vertical-align:text-bottom; }
+@keyframes blink { 50% { opacity:0; } }
+
+/* ── Stats strip ──────────────────────────────────────────── */
+.stats-strip { border-top:1px solid #30363d; padding-top:2rem; margin-top:2.5rem; }
+.stat-item .num { font-size:1.8rem; font-weight:700; color:#58a6ff; line-height:1; }
+.stat-item .lbl { font-size:.75rem; color:#8b949e; text-transform:uppercase; letter-spacing:.08em; }
+
+/* ── Feature cards ─────────────────────────────────────────── */
+.feature-card {
+  background:var(--bg-card); border:1px solid var(--border-muted); border-radius:12px;
+  padding:1.75rem; height:100%; transition:border-color .2s, box-shadow .2s;
+}
+.feature-card:hover { border-color:#58a6ff66; box-shadow:0 0 20px #58a6ff11; }
+.feature-icon { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.4rem; margin-bottom:1rem; }
+
+/* ── Steps ────────────────────────────────────────────────── */
+.step-number { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,#58a6ff,#39d3f7); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1rem; color:#0d1117; flex-shrink:0; }
+
+/* ── OWASP badges ─────────────────────────────────────────── */
+.owasp-badge { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:.6rem 1rem; font-size:.8rem; }
+
+/* ── CTA section ──────────────────────────────────────────── */
+.cta-section { background:linear-gradient(135deg,#0d2850 0%,#0d1117 100%); border:1px solid #30363d; border-radius:16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ════════════════════ HERO ════════════════════════════════════════ -->
+<section class="hero-section">
+  <div class="container">
+    <div class="row align-items-center g-5">
+
+      <!-- Left: copy -->
+      <div class="col-lg-6">
+        <span class="hero-badge mb-3 d-inline-block">
+          <i class="bi bi-cpu me-1"></i> AI-Powered Security Intelligence
+        </span>
+        <h1 class="display-4 fw-bold mb-4 lh-sm">
+          Salesforce Security<br>
+          <span class="gradient-text">Intelligence Platform</span>
+        </h1>
+        <p class="lead mb-4" style="color:#8b949e; max-width:520px;">
+          Autonomously detect IDOR vulnerabilities, Apex system-mode leaks, and OWASP API
+          Security violations in your Salesforce Experience Cloud sites — before attackers do.
+        </p>
+        <div class="d-flex flex-wrap gap-3 mb-5">
+          <a href="/register" class="btn btn-primary btn-lg px-4 fw-semibold">
+            <i class="bi bi-rocket-takeoff me-1"></i>Start Scanning Free
+          </a>
+          <a href="#features" class="btn btn-outline-secondary btn-lg px-4">
+            <i class="bi bi-info-circle me-1"></i>Learn More
+          </a>
+        </div>
+
+        <!-- Live stat strip -->
+        <div class="stats-strip">
+          <div class="row text-center g-3">
+            <div class="col-4 stat-item">
+              <div class="num">{{ total_scans }}</div>
+              <div class="lbl">Scans Run</div>
+            </div>
+            <div class="col-4 stat-item">
+              <div class="num">{{ total_findings }}</div>
+              <div class="lbl">Findings</div>
+            </div>
+            <div class="col-4 stat-item">
+              <div class="num" style="color:#f85149;">{{ critical_count }}</div>
+              <div class="lbl">Critical</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: animated terminal -->
+      <div class="col-lg-6">
+        <div class="terminal-window">
+          <div class="terminal-header">
+            <span class="term-dot term-red"></span>
+            <span class="term-dot term-yellow"></span>
+            <span class="term-dot term-green"></span>
+            <span class="ms-2" style="color:#8b949e;font-size:.75rem;">aura-inspector — scan</span>
+          </div>
+          <div id="terminal-body">
+            <!-- Lines injected by JS -->
+          </div>
+          <div class="term-cursor" id="term-cursor" style="display:none;"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ FEATURES ════════════════════════════════════ -->
+<section id="features" class="py-6" style="padding:5rem 0;">
+  <div class="container">
+    <div class="text-center mb-5">
+      <h2 class="fw-bold mb-2">Three Expert Scanners. One Platform.</h2>
+      <p style="color:#8b949e;">Each scanner is built for a specific class of Salesforce vulnerability, then orchestrated by an AI agent.</p>
+    </div>
+    <div class="row g-4">
+
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#f8514920;color:#f85149;"><i class="bi bi-shuffle"></i></div>
+          <h5 class="fw-bold mb-2">IDOR Scanner</h5>
+          <p style="color:#8b949e;font-size:.9rem;">
+            Tests cross-object record ID prefix swaps and direct <code>RecordUiController</code>
+            access. Detects Insecure Direct Object References that bypass sharing rules.
+          </p>
+          <span class="badge" style="background:#f8514922;color:#f85149;border:1px solid #f8514944;font-size:.72rem;">API1:2023 BOLA</span>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#58a6ff20;color:#58a6ff;"><i class="bi bi-lightning-charge"></i></div>
+          <h5 class="fw-bold mb-2">Aura Fuzzer</h5>
+          <p style="color:#8b949e;font-size:.9rem;">
+            Probes Aura endpoint controllers — list views, record data providers, and search — for
+            guest-accessible sensitive objects and wildcard query leaks.
+          </p>
+          <div class="d-flex gap-1 flex-wrap">
+            <span class="badge" style="background:#58a6ff22;color:#58a6ff;border:1px solid #58a6ff44;font-size:.72rem;">API1 BOLA</span>
+            <span class="badge" style="background:#58a6ff22;color:#58a6ff;border:1px solid #58a6ff44;font-size:.72rem;">API8 Misconfig</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#a371f720;color:#c396f5;"><i class="bi bi-code-slash"></i></div>
+          <h5 class="fw-bold mb-2">Apex Scanner</h5>
+          <p style="color:#8b949e;font-size:.9rem;">
+            Probes custom Apex controllers with fuzzing inputs. Flags oversized result sets
+            (no <code>WITH SHARING</code>) and internal error message leaks exposing SOQL details.
+          </p>
+          <span class="badge" style="background:#a371f722;color:#c396f5;border:1px solid #a371f744;font-size:.72rem;">API3:2023 BOPLA</span>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#3fb95020;color:#3fb950;"><i class="bi bi-robot"></i></div>
+          <h5 class="fw-bold mb-2">AI Agent Analysis</h5>
+          <p style="color:#8b949e;font-size:.9rem;">
+            GPT-4o orchestrates scanners, identifies systemic patterns, and generates a
+            prioritised action plan with Salesforce Setup paths and Apex code fixes.
+            Falls back to rule-based scoring with no API key required.
+          </p>
+          <span class="badge" style="background:#3fb95022;color:#3fb950;border:1px solid #3fb95044;font-size:.72rem;">Optional AI</span>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#d2992220;color:#d29922;"><i class="bi bi-key"></i></div>
+          <h5 class="fw-bold mb-2">Salesforce OAuth</h5>
+          <p style="color:#8b949e;font-size:.9rem;">
+            Full OAuth 2.0 Authorization Code Flow with a local callback server.
+            Authenticate as any Experience Cloud persona and compare guest vs. logged-in exposure.
+          </p>
+          <span class="badge" style="background:#d2992222;color:#d29922;border:1px solid #d2992244;font-size:.72rem;">Auth Scan</span>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:#39d3f720;color:#39d3f7;"><i class="bi bi-graph-up"></i></div>
+          <h5 class="fw-bold mb-2">Dashboard &amp; Reports</h5>
+          <p style="color:#8b949e;font-size:.9rem;">
+            Interactive severity charts, OWASP category breakdowns, and scan-over-time trends.
+            Export print-ready HTML reports with full remediation guidance per finding.
+          </p>
+          <span class="badge" style="background:#39d3f722;color:#39d3f7;border:1px solid #39d3f744;font-size:.72rem;">Reporting</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ HOW IT WORKS ════════════════════════════════ -->
+<section style="padding:5rem 0; background:#111820;">
+  <div class="container">
+    <div class="text-center mb-5">
+      <h2 class="fw-bold mb-2">How It Works</h2>
+      <p style="color:#8b949e;">Three steps from URL to remediation plan.</p>
+    </div>
+    <div class="row g-4 justify-content-center">
+      <div class="col-md-4">
+        <div class="d-flex gap-3">
+          <div class="step-number flex-shrink-0">1</div>
+          <div>
+            <h6 class="fw-bold mb-1">Configure &amp; Connect</h6>
+            <p style="color:#8b949e;font-size:.9rem;">Enter your Experience Cloud URL. For authenticated scans, click one button to trigger the Salesforce OAuth browser flow.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="d-flex gap-3">
+          <div class="step-number flex-shrink-0">2</div>
+          <div>
+            <h6 class="fw-bold mb-1">Automated AI Scan</h6>
+            <p style="color:#8b949e;font-size:.9rem;">The AI agent runs all three scanners in parallel, analyses findings for systemic patterns, and scores risk 0–100.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="d-flex gap-3">
+          <div class="step-number flex-shrink-0">3</div>
+          <div>
+            <h6 class="fw-bold mb-1">Act on Findings</h6>
+            <p style="color:#8b949e;font-size:.9rem;">Review prioritised findings with specific Salesforce Setup paths, Apex code examples, and export a full PDF-ready HTML report.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ OWASP COVERAGE ══════════════════════════════ -->
+<section style="padding:5rem 0;">
+  <div class="container">
+    <div class="text-center mb-4">
+      <h2 class="fw-bold mb-2">OWASP API Security 2023 Coverage</h2>
+      <p style="color:#8b949e;">Every finding is tagged with an OWASP API Security Top 10 reference.</p>
+    </div>
+    <div class="row g-3 justify-content-center">
+      {% for ref, desc in [
+        ("API1:2023","Broken Object Level Authorization"),
+        ("API3:2023","Broken Object Property Level Authorization"),
+        ("API5:2023","Broken Function Level Authorization"),
+        ("API8:2023","Security Misconfiguration")
+      ] %}
+      <div class="col-md-3 col-sm-6">
+        <div class="owasp-badge text-center">
+          <div class="fw-bold" style="color:#58a6ff;">{{ ref }}</div>
+          <div style="color:#8b949e;font-size:.78rem;">{{ desc }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ CTA ══════════════════════════════════════════ -->
+<section style="padding:5rem 0;">
+  <div class="container">
+    <div class="cta-section p-5 text-center">
+      <h2 class="fw-bold mb-3">Ready to Secure Your Salesforce?</h2>
+      <p style="color:#8b949e;max-width:520px;margin:0 auto 2rem;">
+        Create a free account, run your first scan in minutes, and get a prioritised remediation roadmap.
+      </p>
+      <a href="/register" class="btn btn-primary btn-lg px-5 fw-semibold me-3">
+        <i class="bi bi-person-plus me-1"></i>Create Free Account
+      </a>
+      <a href="/login" class="btn btn-outline-secondary btn-lg px-4">
+        <i class="bi bi-box-arrow-in-right me-1"></i>Sign In
+      </a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ── Terminal animation ────────────────────────────────────────────
+const lines = [
+  {t:'ok',   s:'[✓] Connecting to https://example.my.site.com …'},
+  {t:'ok',   s:'[✓] Aura endpoint detected: /s/sfsites/aura'},
+  {t:'ok',   s:'[✓] Context extracted — fwuid acquired'},
+  {t:'',     s:''},
+  {t:'ok',   s:'[→] Phase 1/3 — Aura Fuzzer'},
+  {t:'crit', s:'[!] CRITICAL: "User" object visible to guest profile'},
+  {t:'warn', s:'[!] HIGH: ListViewDataProviderController → 47 records'},
+  {t:'warn', s:'[!] MEDIUM: Search wildcard "%" accepted (120 results)'},
+  {t:'',     s:''},
+  {t:'ok',   s:'[→] Phase 2/3 — IDOR Scanner'},
+  {t:'crit', s:'[!] CRITICAL: Cross-object ID swap 001→005 succeeded'},
+  {t:'warn', s:'[!] HIGH: RecordUiController accessible without auth'},
+  {t:'',     s:''},
+  {t:'ok',   s:'[→] Phase 3/3 — Apex Scanner'},
+  {t:'warn', s:'[!] HIGH: CustomSearchController returned 312 records'},
+  {t:'warn', s:'[!] MEDIUM: Error leaks SOQL query (DmlException)'},
+  {t:'',     s:''},
+  {t:'ok',   s:'[✓] AI analysis complete — Risk Score: 78/100'},
+  {t:'ok',   s:'[✓] 6 findings saved to database'},
+];
+
+const body = document.getElementById('terminal-body');
+const cursor = document.getElementById('term-cursor');
+let idx = 0;
+
+function nextLine() {
+  if (idx >= lines.length) {
+    cursor.style.display = 'inline-block';
+    return;
+  }
+  const {t, s} = lines[idx++];
+  const el = document.createElement('div');
+  el.className = 'term-line' + (t ? ' term-' + t : '');
+  el.textContent = s || '\u00a0';
+  body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('visible'));
+  body.scrollTop = body.scrollHeight;
+  setTimeout(nextLine, idx <= 3 ? 400 : 250);
+}
+
+setTimeout(nextLine, 600);
+</script>
+{% endblock %}

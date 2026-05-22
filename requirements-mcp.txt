@@ -1,0 +1,9 @@
+# MCP server dependencies for Aura Inspector
+# Install with: pip install -r requirements-mcp.txt
+#
+# Base CLI deps (requests) and AI deps (openai, tenacity) are also required
+# when running the MCP server with AI features enabled.
+# Install all: pip install -r requirements.txt -r requirements-ai.txt -r requirements-mcp.txt
+
+fastmcp>=2.0.0
+structlog>=24.1.0

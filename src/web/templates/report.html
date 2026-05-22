@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Security Report — Scan #{{ scan.id }} — Aura Inspector</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    body { background:#fff; color:#1a1a2e; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+    .report-header { background:linear-gradient(135deg,#0d2850,#1a237e); color:#fff; padding:2.5rem; border-radius:12px; margin-bottom:2rem; }
+    .severity-critical { color:#c62828; }
+    .severity-high     { color:#e65100; }
+    .severity-medium   { color:#6a1fa8; }
+    .severity-low      { color:#1565c0; }
+    .severity-info     { color:#2e7d32; }
+    .finding-block { border-left:4px solid #ccc; padding:1rem 1.25rem; margin-bottom:1rem; page-break-inside:avoid; }
+    .finding-block.critical { border-color:#c62828; background:#fff5f5; }
+    .finding-block.high     { border-color:#e65100; background:#fff8f0; }
+    .finding-block.medium   { border-color:#6a1fa8; background:#f9f5ff; }
+    .finding-block.low      { border-color:#1565c0; background:#f0f6ff; }
+    .finding-block.info     { border-color:#2e7d32; background:#f0fff0; }
+    .sev-badge { display:inline-block; padding:.2rem .6rem; border-radius:4px; font-size:.72rem; font-weight:700; text-transform:uppercase; margin-right:.5rem; }
+    .sev-badge.critical { background:#fde8e8; color:#c62828; }
+    .sev-badge.high     { background:#fdf0e6; color:#e65100; }
+    .sev-badge.medium   { background:#f4e8ff; color:#6a1fa8; }
+    .sev-badge.low      { background:#e8f0ff; color:#1565c0; }
+    .sev-badge.info     { background:#e8f5e9; color:#2e7d32; }
+    pre { background:#f8f9fa; border:1px solid #e9ecef; border-radius:6px; padding:.75rem; font-size:.78rem; white-space:pre-wrap; }
+    .stat-box { border:1px solid #e9ecef; border-radius:8px; padding:1rem; text-align:center; }
+    .stat-box .num { font-size:2rem; font-weight:700; line-height:1; }
+    .remediation-card { background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:1.25rem; margin-bottom:1rem; }
+    @media print {
+      .no-print { display:none !important; }
+      body { font-size:11px; }
+      .report-header { break-after: page; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container py-4" style="max-width:960px;">
+
+  <!-- Print button -->
+  <div class="text-end mb-3 no-print">
+    <button onclick="window.print()" class="btn btn-sm btn-outline-secondary me-2">
+      🖨 Print / Save PDF
+    </button>
+    <a href="/scans/{{ scan.id }}" class="btn btn-sm btn-outline-primary">← Back to Scan</a>
+  </div>
+
+  <!-- Report header -->
+  <div class="report-header">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <h1 class="h3 fw-bold mb-1">🛡️ Security Assessment Report</h1>
+        <p class="mb-0 opacity-75">Aura Inspector — Salesforce Experience Cloud</p>
+      </div>
+      <div class="text-end">
+        <div class="h4 fw-bold mb-0">Risk Score: {{ scan.risk_score }}/100</div>
+        <small class="opacity-75">Generated {{ generated_at }}</small>
+      </div>
+    </div>
+    <hr style="border-color:rgba(255,255,255,.3);"/>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <table class="table table-sm mb-0" style="color:rgba(255,255,255,.9);font-size:.85rem;">
+          <tr><td class="fw-semibold pe-3">Target URL</td><td>{{ scan.target_url }}</td></tr>
+          <tr><td class="fw-semibold pe-3">Scan Type</td><td>{{ scan.scan_type | title }}</td></tr>
+          <tr><td class="fw-semibold pe-3">Scan ID</td><td>#{{ scan.id }}</td></tr>
+        </table>
+      </div>
+      <div class="col-md-6">
+        <table class="table table-sm mb-0" style="color:rgba(255,255,255,.9);font-size:.85rem;">
+          <tr><td class="fw-semibold pe-3">Started</td><td>{{ scan.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+          {% if scan.completed_at %}
+          <tr><td class="fw-semibold pe-3">Completed</td><td>{{ scan.completed_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+          {% endif %}
+          <tr><td class="fw-semibold pe-3">Analyst</td><td>{{ user.username }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Executive summary -->
+  {% if scan.ai_analysis and scan.ai_analysis.risk_summary %}
+  <section class="mb-4">
+    <h2 class="h5 fw-bold mb-3 pb-2" style="border-bottom:2px solid #e9ecef;">Executive Summary</h2>
+    <p>{{ scan.ai_analysis.risk_summary }}</p>
+    {% if scan.ai_analysis.critical_patterns %}
+    <h6 class="fw-semibold">Key Risk Patterns</h6>
+    <ul>
+      {% for p in scan.ai_analysis.critical_patterns %}<li>{{ p }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <!-- Findings summary -->
+  <section class="mb-4">
+    <h2 class="h5 fw-bold mb-3 pb-2" style="border-bottom:2px solid #e9ecef;">Findings Summary</h2>
+    <div class="row g-3 mb-3">
+      {% for sev, label, color in [('critical','Critical','#c62828'),('high','High','#e65100'),('medium','Medium','#6a1fa8'),('low','Low','#1565c0'),('info','Info','#2e7d32')] %}
+      <div class="col">
+        <div class="stat-box">
+          <div class="num" style="color:{{ color }};">{{ counts[sev] }}</div>
+          <div style="font-size:.75rem;color:#666;text-transform:uppercase;">{{ label }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- Detailed findings -->
+  <section class="mb-5">
+    <h2 class="h5 fw-bold mb-3 pb-2" style="border-bottom:2px solid #e9ecef;">Detailed Findings</h2>
+    {% for finding in findings %}
+    <div class="finding-block {{ finding.severity }}">
+      <div class="d-flex flex-wrap align-items-start gap-2 mb-2">
+        <span class="sev-badge {{ finding.severity }}">{{ finding.severity }}</span>
+        <strong>{{ finding.title }}</strong>
+        {% if finding.owasp_ref %}
+        <span style="font-size:.75rem;color:#666;background:#f0f0f0;padding:.1rem .4rem;border-radius:4px;">{{ finding.owasp_ref }}</span>
+        {% endif %}
+      </div>
+      <p style="font-size:.87rem;margin-bottom:.5rem;">{{ finding.description }}</p>
+      {% if finding.evidence %}
+      <p class="fw-semibold mb-1" style="font-size:.8rem;">Evidence</p>
+      <pre>{{ finding.evidence }}</pre>
+      {% endif %}
+      {% if finding.remediation %}
+      <p class="fw-semibold mb-1" style="font-size:.8rem;">Remediation</p>
+      <pre>{{ finding.remediation }}</pre>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="text-muted">No findings recorded for this scan.</p>
+    {% endfor %}
+  </section>
+
+  <!-- Remediation guide -->
+  {% if remediation_sections %}
+  <section class="mb-5">
+    <h2 class="h5 fw-bold mb-3 pb-2" style="border-bottom:2px solid #e9ecef;">Salesforce Remediation Guide</h2>
+    {% for section in remediation_sections %}
+    <div class="remediation-card">
+      <h6 class="fw-bold mb-1">{{ section.owasp }} — {{ section.title }}</h6>
+      <p class="fw-semibold mb-1" style="font-size:.82rem;">Salesforce Setup Steps</p>
+      <ol style="font-size:.85rem;">
+        {% for step in section.setup_steps %}<li>{{ step }}</li>{% endfor %}
+      </ol>
+      {% if section.apex_example %}
+      <p class="fw-semibold mb-1" style="font-size:.82rem;">Apex Code Fix</p>
+      <pre>{{ section.apex_example }}</pre>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <!-- Priority actions -->
+  {% if scan.ai_analysis and scan.ai_analysis.priority_actions %}
+  <section class="mb-5">
+    <h2 class="h5 fw-bold mb-3 pb-2" style="border-bottom:2px solid #e9ecef;">Priority Action Plan</h2>
+    <table class="table table-bordered table-sm" style="font-size:.85rem;">
+      <thead style="background:#f0f0f0;"><tr><th>#</th><th>Action</th><th>Urgency</th><th>Type</th></tr></thead>
+      <tbody>
+        {% for action in scan.ai_analysis.priority_actions %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ action.action }}</td>
+          <td><span class="fw-semibold {% if action.urgency == 'immediate' %}severity-critical{% elif action.urgency == 'short-term' %}severity-high{% else %}severity-low{% endif %}">{{ action.urgency | upper }}</span></td>
+          <td>{{ action.type | title }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <footer class="text-center text-muted py-3" style="border-top:1px solid #e9ecef;font-size:.8rem;">
+    Generated by <strong>Aura Inspector</strong> on {{ generated_at }} &middot; Apache 2.0 License
+  </footer>
+
+</div>
+</body>
+</html>

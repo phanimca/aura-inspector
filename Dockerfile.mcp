@@ -1,0 +1,36 @@
+# ── Stage 1: install deps ─────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+COPY requirements.txt requirements-ai.txt requirements-mcp.txt ./
+RUN pip install --no-cache-dir --prefix=/install \
+    -r requirements.txt \
+    -r requirements-ai.txt \
+    -r requirements-mcp.txt
+
+# ── Stage 2: lean runtime ─────────────────────────────────────────────────────
+FROM python:3.11-slim
+
+LABEL org.opencontainers.image.title="Aura Inspector MCP Server"
+LABEL org.opencontainers.image.description="FastMCP server exposing Aura Inspector scan tools to AI assistants"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR /app
+
+COPY --from=builder /install /usr/local
+COPY src/ src/
+
+# MCP_TRANSPORT=stdio (default) for pipe-based clients
+# MCP_TRANSPORT=sse + MCP_PORT=8765 for network-accessible deployment
+ENV MCP_TRANSPORT=stdio \
+    MCP_HOST=0.0.0.0 \
+    MCP_PORT=8765 \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8765
+
+RUN useradd --create-home --shell /bin/bash appuser && chown -R appuser /app
+USER appuser
+
+CMD ["python", "src/mcp/server.py"]

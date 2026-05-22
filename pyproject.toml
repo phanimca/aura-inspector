@@ -7,8 +7,26 @@ name = "aura-inspector"
 version = "0.1.0"
 description = "Swiss Army knife of Salesforce Experience Cloud misconfigurations testing."
 dependencies = [
-	"requests"
+	"fastmcp>=3.3.1",
+	"requests",
+]
+
+[project.optional-dependencies]
+ai  = ["openai>=1.0.0", "tenacity>=8.2.0"]
+ui  = ["gradio>=4.0.0"]
+mcp = ["fastmcp>=2.0.0", "structlog>=24.1.0", "openai>=1.0.0", "tenacity>=8.2.0"]
+web = [
+	"fastapi>=0.104.0",
+	"uvicorn[standard]>=0.24.0",
+	"sqlalchemy>=2.0.0",
+	"jinja2>=3.1.0",
+	"python-multipart>=0.0.9",
+	"passlib[bcrypt]>=1.7.4",
+	"python-jose[cryptography]>=3.3.0",
 ]
 
 [project.scripts]
-aura-inspector = "aura_cli:main"
+aura-inspector     = "aura_cli:main"
+aura-inspector-ui  = "ui.app:main"
+aura-inspector-web = "web.main:main"
+aura-inspector-mcp = "mcp.server:mcp.run"

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}New Scan — Aura Inspector{% endblock %}
+{% block content %}
+<div class="content-wrapper">
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+
+      <div class="mb-4">
+        <h4 class="fw-bold mb-1"><i class="bi bi-radar me-2" style="color:#58a6ff;"></i>Configure New Scan</h4>
+        <p class="text-muted small">Enter the target Salesforce Experience Cloud URL and scan options.</p>
+      </div>
+
+      {% if error %}
+      <div class="alert-danger-custom mb-3"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}</div>
+      {% endif %}
+
+      <form method="post" action="/scans" id="scan-form">
+
+        <!-- Target -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-semibold mb-3"><i class="bi bi-globe me-1"></i>Target</h6>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Site URL <span class="text-danger">*</span></label>
+            <input type="url" name="target_url" class="form-control" placeholder="https://example.my.site.com" required/>
+            <div class="form-text" style="color:#8b949e;">The root URL of the Experience Cloud site (no trailing slash)</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">App Path <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="text" name="app_path" class="form-control" placeholder="/s"/>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Aura Path <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="text" name="aura_path" class="form-control" placeholder="/s/sfsites/aura"/>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scan type -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-semibold mb-3"><i class="bi bi-person-badge me-1"></i>Scan Type</h6>
+          <div class="d-flex gap-3 mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="scan_type" id="type-guest" value="guest" checked onchange="toggleAuth(false)"/>
+              <label class="form-check-label" for="type-guest">
+                <strong>Guest</strong> <span class="text-muted small">(unauthenticated)</span>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="scan_type" id="type-auth" value="auth" onchange="toggleAuth(true)"/>
+              <label class="form-check-label" for="type-auth">
+                <strong>Authenticated</strong> <span class="text-muted small">(paste cookies)</span>
+              </label>
+            </div>
+          </div>
+          <div id="auth-fields" style="display:none;">
+            <label class="form-label small fw-semibold">Session Cookies</label>
+            <textarea name="cookies" class="form-control font-monospace" rows="3" placeholder="sid=00D…; other_cookie=…"></textarea>
+            <div class="form-text" style="color:#8b949e;">Copy from browser DevTools → Application → Cookies after logging in.</div>
+          </div>
+        </div>
+
+        <!-- Advanced options (collapsed by default) -->
+        <div class="card p-4 mb-3">
+          <a class="d-flex justify-content-between align-items-center text-decoration-none fw-semibold" data-bs-toggle="collapse" href="#advancedOpts">
+            <span><i class="bi bi-sliders me-1"></i>Advanced Options</span>
+            <i class="bi bi-chevron-down" style="color:#8b949e;"></i>
+          </a>
+          <div class="collapse mt-3" id="advancedOpts">
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Proxy <span class="text-muted fw-normal">(optional, e.g. Burp)</span></label>
+              <input type="text" name="proxy" class="form-control" placeholder="http://127.0.0.1:8080"/>
+            </div>
+            <div>
+              <label class="form-label small fw-semibold">OpenAI API Key <span class="text-muted fw-normal">(optional — enables GPT-4o analysis)</span></label>
+              <input type="password" name="openai_key" class="form-control" placeholder="sk-…"/>
+              <div class="form-text" style="color:#8b949e;">Without a key, rule-based risk scoring is used automatically.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Info box -->
+        <div class="card p-3 mb-4" style="background:#161b2280;border-color:#58a6ff33;">
+          <p class="mb-0 small" style="color:#8b949e;">
+            <i class="bi bi-info-circle me-1" style="color:#58a6ff;"></i>
+            Scans run in the background. You'll be taken to the results page immediately and the view updates automatically when the scan completes.
+          </p>
+        </div>
+
+        <button type="submit" class="btn btn-primary fw-semibold px-4" id="submit-btn">
+          <i class="bi bi-play-fill me-1"></i>Start Scan
+        </button>
+        <a href="/dashboard" class="btn btn-outline-secondary ms-2">Cancel</a>
+
+      </form>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function toggleAuth(show) {
+  document.getElementById('auth-fields').style.display = show ? 'block' : 'none';
+}
+document.getElementById('scan-form').addEventListener('submit', () => {
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting…';
+});
+</script>
+{% endblock %}
