@@ -20,14 +20,14 @@ Some of it's functionality includes:
 
 The tool can be installed with pipx using the command below.
 ```
-pipx install git+<URL>
+pipx install git+https://github.com/phanimca/aura-inspector
 ```
 
 ### pip
 
 The tool requires Python 3 to run and pip to download the dependencies. We recommend creating a virtual environment to install the dependencies.
 ```
-git clone <URL>
+git clone https://github.com/phanimca/aura-inspector
 cd aura-inspector
 virtualenv env
 source ./env/bin/activate

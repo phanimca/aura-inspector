@@ -1,0 +1,175 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Install Python dependencies",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"-m",
+				"pip",
+				"install",
+				"-r",
+				"requirements.txt"
+			]
+		},
+		{
+			"label": "Smoke test aura CLI",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-h"
+			]
+		},
+		{
+			"label": "Run aura inspector target scan",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-u",
+				"https://www.producttester.philips.com"
+			]
+		},
+		{
+			"label": "Run aura inspector with insecure TLS",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-u",
+				"https://www.producttester.philips.com",
+				"-k"
+			]
+		},
+		{
+			"label": "Run aura inspector no gql",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-u",
+				"https://www.producttester.philips.com",
+				"-k",
+				"--no-gql"
+			]
+		},
+		{
+			"label": "Run aura inspector no gql noninteractive",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"echo N| c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe src/aura_cli.py -u https://www.producttester.philips.com -k --no-gql"
+			]
+		},
+		{
+			"label": "Run aura inspector no gql noninteractive powershell",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"echo N | & 'c:\\phani_ws\\Python_AuraInspector\\aura-inspector\\.venv\\Scripts\\python.exe' 'src/aura_cli.py' -u 'https://www.producttester.philips.com' -k --no-gql"
+			]
+		},
+		{
+			"label": "Follow-up no-gql completion check",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-u",
+				"https://www.producttester.philips.com",
+				"-k",
+				"--no-gql"
+			]
+		},
+		{
+			"label": "Follow-up no-gql noninteractive",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"echo N | & 'c:\\phani_ws\\Python_AuraInspector\\aura-inspector\\.venv\\Scripts\\python.exe' 'src/aura_cli.py' -u 'https://www.producttester.philips.com' -k --no-gql"
+			]
+		},
+		{
+			"label": "Run scan and save to results",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-u",
+				"https://www.producttester.philips.com",
+				"-k",
+				"-o",
+				"\\results"
+			]
+		},
+		{
+			"label": "Re-run full aura scan to results",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-u",
+				"https://www.producttester.philips.com",
+				"-k",
+				"-o",
+				"\\results"
+			]
+		},
+		{
+			"label": "Re-run scan with explicit aura path",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-u",
+				"https://www.producttester.philips.com",
+				"-k",
+				"--aura",
+				"/s/sfsites/aura",
+				"--app",
+				"/",
+				"-o",
+				"\\results"
+			]
+		},
+		{
+			"label": "Re-run no-gql scan to results",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-u",
+				"https://www.producttester.philips.com",
+				"-k",
+				"--no-gql",
+				"-o",
+				"\\results"
+			]
+		},
+		{
+			"label": "Retry scan with explicit app s",
+			"type": "shell",
+			"command": "c:/phani_ws/Python_AuraInspector/aura-inspector/.venv/Scripts/python.exe",
+			"args": [
+				"src/aura_cli.py",
+				"-u",
+				"https://www.producttester.philips.com",
+				"-k",
+				"--aura",
+				"/s/sfsites/aura",
+				"--app",
+				"/s",
+				"--no-gql",
+				"-o",
+				"\\results"
+			]
+		}
+	]
+}
