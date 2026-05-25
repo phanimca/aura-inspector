@@ -3,11 +3,12 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aura-inspector"
-version = "0.1.0"
+name = "phani-aura-inspector"
+version = "0.2.0"
 description = "Swiss Army knife for auditing Salesforce Experience Cloud (Aura) misconfigurations."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [
     { name = "Phani", email = "phani.dummy@hotmail.com" },
@@ -21,7 +22,6 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -60,7 +60,7 @@ web = [
     "python-dotenv>=1.0.0",
 ]
 all = [
-    "aura-inspector[ai,ui,mcp,web]",
+    "phani-aura-inspector[ai,ui,mcp,web]",
 ]
 
 [project.urls]
