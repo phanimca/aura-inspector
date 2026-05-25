@@ -1,10 +1,22 @@
-# aura-inspector
+# Salesforce Security AI Scanner
 
-> **Not an officially supported Google product.** This project is not eligible for the [Google Open Source Software Vulnerability Rewards Program](https://bughunters.google.com/open-source-security).
+> **Built by [phanimca](https://github.com/phanimca)** &mdash; an AI-powered security auditing tool for Salesforce Experience Cloud (Aura).  
+> **Live Demo**: [https://phani-aura-inspector.vercel.app](https://phani-aura-inspector.vercel.app)
 
-**aura-inspector** is a security auditing toolkit for Salesforce Experience Cloud (Aura). It automates the discovery of misconfigured endpoints, over-privileged guest access, IDOR vulnerabilities, and Apex controller weaknesses. It ships as four integrated surfaces: a command-line scanner, a web dashboard, a Gradio desktop UI, and a FastMCP server for AI assistant integration.
+**Salesforce Security AI Scanner** is a security auditing toolkit for Salesforce Experience Cloud (Aura). It automates the discovery of misconfigured endpoints, over-privileged guest access, IDOR vulnerabilities, and Apex controller weaknesses. It ships as four integrated surfaces: a command-line scanner, a web dashboard, a Gradio desktop UI, and a FastMCP server for AI assistant integration.
 
 For background, see the Mandiant blog post: [Auditing Salesforce Aura Data Exposure](https://cloud.google.com/blog/topics/threat-intelligence/auditing-salesforce-aura-data-exposure).
+
+---
+
+## Author
+
+| | |
+|---|---|
+| **Author** | [phanimca](https://github.com/phanimca) |
+| **Live App** | [https://phani-aura-inspector.vercel.app](https://phani-aura-inspector.vercel.app) |
+| **PyPI** | [phani-aura-inspector](https://pypi.org/project/phani-aura-inspector/) |
+| **License** | Apache 2.0 |
 
 ---
 
@@ -80,7 +92,7 @@ aura-inspector/
 
 ## Requirements
 
-- **Python 3.11+**
+- **Python 3.12+**
 - **Windows**: `.venv\Scripts\python.exe` | **Linux/macOS**: `.venv/bin/python`
 
 | Surface | Extra requirements |
@@ -237,6 +249,9 @@ python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com \
 ## Web Dashboard
 
 The web dashboard provides a persistent scan history with authentication, a live scan status page, a severity chart dashboard, and printable HTML reports.
+
+> **Live hosted version:** [https://phani-aura-inspector.vercel.app](https://phani-aura-inspector.vercel.app)
+> Default login: `phani.dummy@hotmail.com` / configured via `DEFAULT_ADMIN_PASSWORD` env var.
 
 ### Start
 
@@ -471,7 +486,7 @@ curl http://localhost:8765/tools
 
 | Component | License |
 |---|---|
-| aura-inspector core | [Apache License 2.0](LICENSE) |
+| salesforce-security-ai-scanner core | [Apache License 2.0](LICENSE) |
 | `requests` | Apache License 2.0 |
 | `openai` Python SDK | Apache License 2.0 |
 | `tenacity` | Apache License 2.0 |

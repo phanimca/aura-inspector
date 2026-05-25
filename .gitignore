@@ -134,3 +134,6 @@ records_found/
 output/
 out/*
 
+.vercel
+.env*.local
+.env.vercel.*

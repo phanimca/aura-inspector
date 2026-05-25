@@ -40,7 +40,7 @@ except ImportError:
 
 
 _AGENT_SYSTEM_PROMPT = """You are an expert Salesforce security analyst.
-Analyze the provided JSON scan findings from an Aura Inspector scan of a Salesforce
+Analyze the provided JSON scan findings from a Salesforce Security AI Scanner scan of a Salesforce
 Experience Cloud site and return a JSON object with exactly these keys:
 
   "risk_summary"         – 2–3 sentence plain-language executive summary of risk.

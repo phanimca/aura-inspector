@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-Aura Inspector – Admin UI
-=========================
+Salesforce Security AI Scanner – Admin UI
+==========================================
 Gradio-based web interface for guest and authenticated Salesforce Experience Cloud
 security scans.  Run with:
 
@@ -239,7 +239,7 @@ def _analysis_to_markdown(analysis: dict) -> str:
 # ------------------------------------------------------------------
 
 _HELP_MD = """
-## Aura Inspector – Admin UI
+## Salesforce Security AI Scanner – Admin UI
 
 ### Scan Modes
 | Tab | What it does |
@@ -290,11 +290,11 @@ def build_ui() -> gr.Blocks:
 	oauth_token_state = gr.State(value=None)
 
 	with gr.Blocks(
-		title='Aura Inspector – Salesforce Security Scanner',
+		title='Salesforce Security AI Scanner',
 		theme=gr.themes.Soft(),
 	) as demo:
 		gr.Markdown(
-			'# 🔍 Aura Inspector\n'
+			'# 🔍 Salesforce Security AI Scanner\n'
 			'### AI-Powered Salesforce Experience Cloud Security Scanner'
 		)
 

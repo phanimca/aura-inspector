@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Aura Inspector Web Application (FastAPI)
+Salesforce Security AI Scanner — Web Application (FastAPI)
 
 Run locally:
     pip install -r requirements-web.txt
@@ -59,7 +59,7 @@ from web import scan_runner
 
 _BASE_DIR = Path(__file__).parent
 
-app = FastAPI(title='Aura Inspector', docs_url=None, redoc_url=None)
+app = FastAPI(title='Salesforce Security AI Scanner', docs_url=None, redoc_url=None)
 
 # ---------------------------------------------------------------------------
 # Base URL — used for absolute links, OAuth callbacks, etc.

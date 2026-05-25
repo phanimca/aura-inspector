@@ -48,18 +48,18 @@ CALLBACK_PORT = 8484
 REDIRECT_URI = f'http://localhost:{CALLBACK_PORT}/callback'
 
 _SUCCESS_HTML = (
-	b'<!DOCTYPE html><html><head><title>Aura Inspector - Connected</title></head>'
+	b'<!DOCTYPE html><html><head><title>SF Security AI Scanner - Connected</title></head>'
 	b'<body style="font-family:sans-serif;text-align:center;padding-top:60px">'
 	b'<h2>Authentication successful!</h2>'
-	b'<p>You may close this browser tab and return to Aura Inspector.</p>'
+	b'<p>You may close this browser tab and return to Salesforce Security AI Scanner.</p>'
 	b'</body></html>'
 )
 
 _FAILURE_HTML = (
-	b'<!DOCTYPE html><html><head><title>Aura Inspector - Failed</title></head>'
+	b'<!DOCTYPE html><html><head><title>SF Security AI Scanner - Failed</title></head>'
 	b'<body style="font-family:sans-serif;text-align:center;padding-top:60px">'
 	b'<h2>Authentication failed.</h2>'
-	b'<p>Check the Aura Inspector console for details.</p>'
+	b'<p>Check the Salesforce Security AI Scanner console for details.</p>'
 	b'</body></html>'
 )
 

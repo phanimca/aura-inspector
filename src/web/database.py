@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-SQLAlchemy models and session factory for the Aura Inspector web application.
+SQLAlchemy models and session factory for the Salesforce Security AI Scanner web application.
 Database: SQLite at <project-root>/data/aura_inspector.db (local)
          or the URL specified by the DATABASE_URL environment variable (cloud).
 

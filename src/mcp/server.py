@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Aura Inspector FastMCP Server
+Salesforce Security AI Scanner — FastMCP Server
 ==============================
 Exposes the scanner and remediation library as MCP tools and resources so that
 AI assistants (Claude Desktop, VS Code Copilot, etc.) can drive security scans

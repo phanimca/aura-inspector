@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Password hashing and JWT session token utilities for the Aura Inspector web app.
+Password hashing and JWT session token utilities for the Salesforce Security AI Scanner web app.
 Tokens are stored in an HttpOnly cookie named COOKIE_NAME to prevent XSS access.
 """
 
