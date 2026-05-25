@@ -16,11 +16,20 @@
 SQLAlchemy models and session factory for the Aura Inspector web application.
 Database: SQLite at <project-root>/data/aura_inspector.db (local)
          or the URL specified by the DATABASE_URL environment variable (cloud).
+
+For persistent storage on Vercel (or any serverless platform), set DATABASE_URL
+to a PostgreSQL connection string, e.g.:
+  postgresql://user:pass@host/dbname?sslmode=require  (Neon / Vercel Postgres)
+Without it the app falls back to SQLite in /tmp which is EPHEMERAL — all data
+is lost when the serverless container is replaced.
 """
 
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import (
 	Boolean, Column, DateTime, ForeignKey,
@@ -42,18 +51,38 @@ _IS_VERCEL: bool = os.environ.get('VERCEL') == '1'
 #   2. /tmp (Vercel)          — ephemeral but always writable on serverless.
 #   3. Local data/ directory  — used when running locally or in Docker.
 _raw_db_url = os.environ.get('DATABASE_URL', '').strip()
+# Some providers (Heroku, Vercel Postgres) emit postgres:// — SQLAlchemy 2.x
+# requires the postgresql:// scheme.  Fix it transparently.
+_raw_db_url = _raw_db_url.replace('postgres://', 'postgresql://', 1) if _raw_db_url.startswith('postgres://') else _raw_db_url
 DATABASE_URL: str = _raw_db_url if '://' in _raw_db_url else ''
+
+_USING_EPHEMERAL_SQLITE = False  # flipped below when falling back to /tmp
+
 if not DATABASE_URL:
 	if _IS_VERCEL:
 		DATABASE_URL = 'sqlite:////tmp/aura_inspector.db'
+		_USING_EPHEMERAL_SQLITE = True
+		logger.warning(
+			'No DATABASE_URL set — using ephemeral SQLite at /tmp/aura_inspector.db. '
+			'All data will be lost on container restart. '
+			'Set DATABASE_URL to a PostgreSQL URL (e.g. Neon/Vercel Postgres) for persistence.'
+		)
 	else:
 		_DATA_DIR = Path(__file__).resolve().parent.parent.parent / 'data'
 		_DATA_DIR.mkdir(exist_ok=True)
 		DATABASE_URL = f'sqlite:///{_DATA_DIR}/aura_inspector.db'
 
-# connect_args is SQLite-specific; omit it for other databases (e.g. PostgreSQL)
-_connect_args = {'check_same_thread': False} if DATABASE_URL.startswith('sqlite') else {}
-engine = create_engine(DATABASE_URL, connect_args=_connect_args)
+logger.info('Database: %s', DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL)
+
+# SQLite needs check_same_thread=False; PostgreSQL needs pool_pre_ping to
+# recover stale connections after serverless container hibernation.
+_is_sqlite = DATABASE_URL.startswith('sqlite')
+_connect_args = {'check_same_thread': False} if _is_sqlite else {}
+engine = create_engine(
+	DATABASE_URL,
+	connect_args=_connect_args,
+	pool_pre_ping=not _is_sqlite,  # re-check connections on checkout (PostgreSQL)
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

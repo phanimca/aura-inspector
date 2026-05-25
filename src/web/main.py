@@ -50,7 +50,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from web.auth import COOKIE_NAME, create_token, decode_token, hash_password, verify_password
-from web.database import AiAnalysis, Finding, ScanJob, User, get_db, init_db
+from web.database import AiAnalysis, Finding, ScanJob, User, _USING_EPHEMERAL_SQLITE, get_db, init_db
 from web import scan_runner
 
 # ---------------------------------------------------------------------------
@@ -137,6 +137,13 @@ def _seed_default_admin(db) -> None:
 
 @app.on_event('startup')
 def on_startup():
+	if _USING_EPHEMERAL_SQLITE:
+		import warnings
+		warnings.warn(
+			'Running with ephemeral SQLite (/tmp). '
+			'Set DATABASE_URL to a PostgreSQL URL for persistent storage.',
+			RuntimeWarning, stacklevel=1,
+		)
 	init_db()
 	db = next(get_db())
 	try:
