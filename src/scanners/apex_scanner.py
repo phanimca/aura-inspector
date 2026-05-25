@@ -41,6 +41,21 @@ _PROBE_PARAMS = [
 	{'pageSize': 1000, 'currentPage': 0},
 ]
 
+# SOQL injection payloads — each triggers a typical dynamic-SOQL concatenation mistake
+_SOQL_INJECTION_PAYLOADS = [
+	"' OR Id != null OR Name LIKE '",   # classic OR injection
+	"') OR (Name LIKE '%",               # paren escape
+	"\\' OR Id != null --",             # backslash escape attempt
+	"' LIMIT 9999 --",                   # LIMIT injection (data exfil)
+]
+
+# Strings in a response that confirm the injection hit live data
+_SOQL_HIT_INDICATORS = [
+	r'\b\d{3}[A-Za-z0-9]{12,15}\b',   # Salesforce record ID pattern in output
+	r'"records"\s*:\s*\[',             # JSON record array
+	r'"totalSize"\s*:\s*[1-9]',        # non-zero totalSize from SOQL result
+]
+
 # Maximum records in a single response that we consider "suspiciously large"
 _LARGE_RESULT_THRESHOLD = 20
 
@@ -62,6 +77,7 @@ class ApexScanner(BaseScanner):
 			_log.info('[ApexScanner] Probing %d custom controllers', len(custom_controllers))
 			for controller in custom_controllers[:15]:   # cap to limit traffic
 				self._probe_controller(controller)
+				self._test_soql_injection(controller)
 		else:
 			_log.debug('[ApexScanner] No custom controllers found')
 		self._test_self_registration_leak()
@@ -138,6 +154,63 @@ class ApexScanner(BaseScanner):
 					affected_objects=[controller],
 				)
 				break   # one finding per controller per call
+
+	# ─────────────────────────────────────────────────────────────────────────
+	# SOQL injection detection
+	# ─────────────────────────────────────────────────────────────────────────
+
+	def _test_soql_injection(self, controller: str):
+		"""
+		Send SOQL injection payloads to a custom controller and check whether
+		the response contains data patterns that indicate successful injection.
+		"""
+		_log.debug('[ApexScanner] SOQL injection test for %s', controller)
+		for payload in _SOQL_INJECTION_PAYLOADS:
+			params = {
+				'searchTerm': payload,
+				'query':      payload,
+				'name':       payload,
+				'filter':     payload,
+			}
+			action = AuraActionHelper.build_action('1;a', controller, params)
+			try:
+				response = self.aura.send_aura_bulk([action])
+				if not response.actions_responses:
+					continue
+				resp = response.actions_responses[0]
+				if not resp.is_success():
+					continue
+				result_str = json.dumps(resp.return_value or '')
+				for indicator in _SOQL_HIT_INDICATORS:
+					if re.search(indicator, result_str):
+						self._add_finding(
+							title=f'Potential SOQL Injection in Custom Controller ({controller.split("/")[-1]})',
+							severity=Severity.CRITICAL,
+							description=(
+								f'Controller {controller} returned data records in response to a SOQL '
+								f'injection payload. The Apex code likely builds a dynamic SOQL string '
+								f'via string concatenation without escaping, allowing an attacker to '
+								f'bypass WHERE clauses and read arbitrary records.'
+							),
+							evidence=(
+								f'Controller: {controller}\n'
+								f'Payload: {payload!r}\n'
+								f'Response indicator matched: {indicator}\n'
+								f'Response preview: {result_str[:300]}'
+							),
+							remediation=(
+								'Replace dynamic SOQL string concatenation with bind variables:\n'
+								'  BAD:  String q = \'SELECT Id FROM Account WHERE Name = \\\'\' + name + \'\\\'\';\n'
+								'  GOOD: [SELECT Id FROM Account WHERE Name = :name];\n'
+								'Use String.escapeSingleQuotes() as a defence-in-depth measure.\n'
+								'Prefer static SOQL (WITH USER_MODE) over dynamic SOQL whenever possible.'
+							),
+							owasp_ref='API9:2023 Improper Inventory Management',
+							affected_objects=[controller],
+						)
+						return  # one finding per controller is sufficient
+			except Exception:
+				_log.debug('[ApexScanner] SOQL injection probe failed for %s', controller, exc_info=True)
 
 	def _test_self_registration_leak(self):
 		"""Test if a custom self-registration controller leaks org configuration."""
