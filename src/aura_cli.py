@@ -620,6 +620,11 @@ def main():
 	parser.add_argument("--allow-unsafe-output", help="Allow authenticated scan output to be written inside the current repository", action="store_true")
 	parser.add_argument("--compare-with-guest", help="Include a guest persona as the baseline when using --persona-request-file", action="store_true")
 	parser.add_argument("--persona-request-file", help="Compare mode persona definition in the form name=path-to-aura-request-file", action="append", default=[])
+	# Salesforce OAuth 2.0 browser flow
+	parser.add_argument("--oauth", help="Authenticate via Salesforce OAuth 2.0 browser flow (opens browser, captures session ID automatically)", action="store_true")
+	parser.add_argument("--sf-instance-url", help="Salesforce instance URL for OAuth (default: https://login.salesforce.com; use https://test.salesforce.com for sandbox)", default="https://login.salesforce.com")
+	parser.add_argument("--sf-client-id", help="Salesforce Connected App Consumer Key (required with --oauth)", default=None)
+	parser.add_argument("--sf-client-secret", help="Salesforce Connected App Consumer Secret (optional — only needed for Web Server flow)", default=None)
 
 	args = parser.parse_args()
 
@@ -672,6 +677,34 @@ def main():
 
 	if app and app == "/":
 		app = "/s"
+
+	# --oauth: Salesforce OAuth 2.0 Authorization Code browser flow.
+	# Opens the user's default browser for Salesforce login, then captures
+	# the session ID automatically via a temporary local callback server.
+	if args.oauth:
+		if not args.sf_client_id:
+			logger.error('--sf-client-id (Consumer Key) is required when using --oauth')
+			exit()
+		try:
+			from ui.oauth_handler import SalesforceOAuthHandler
+			logger.info('Starting Salesforce OAuth 2.0 browser flow — your browser will open…')
+			_oauth_handler = SalesforceOAuthHandler(
+				instance_url=args.sf_instance_url,
+				client_id=args.sf_client_id,
+				client_secret=args.sf_client_secret,
+			)
+			_token_data = _oauth_handler.authenticate_browser_flow()
+			cookies = _oauth_handler.get_session_cookie(_token_data['access_token'])
+			logger.info('OAuth authentication successful. Session cookie obtained.')
+			# If target URL was not supplied, default to the org discovered during OAuth.
+			if not url:
+				url = _token_data.get('instance_url', '')
+		except ImportError:
+			logger.error('OAuth dependencies not available. Run: pip install requests (already included)')
+			exit()
+		except Exception as exc:
+			logger.error('OAuth flow failed: %s', exc)
+			exit()
 
 	object_list = args.object_list
 	if object_list:

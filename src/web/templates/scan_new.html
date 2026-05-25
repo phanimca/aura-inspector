@@ -40,24 +40,61 @@
         <!-- Scan type -->
         <div class="card p-4 mb-3">
           <h6 class="fw-semibold mb-3"><i class="bi bi-person-badge me-1"></i>Scan Type</h6>
-          <div class="d-flex gap-3 mb-3">
+          <div class="d-flex gap-3 flex-wrap mb-3">
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="scan_type" id="type-guest" value="guest" checked onchange="toggleAuth(false)"/>
+              <input class="form-check-input" type="radio" name="scan_type" id="type-guest" value="guest" checked onchange="setScanMode('guest')"/>
               <label class="form-check-label" for="type-guest">
                 <strong>Guest</strong> <span class="text-muted small">(unauthenticated)</span>
               </label>
             </div>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="scan_type" id="type-auth" value="auth" onchange="toggleAuth(true)"/>
+              <input class="form-check-input" type="radio" name="scan_type" id="type-auth" value="auth" onchange="setScanMode('auth')"/>
               <label class="form-check-label" for="type-auth">
                 <strong>Authenticated</strong> <span class="text-muted small">(paste cookies)</span>
               </label>
             </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="scan_type" id="type-oauth" value="oauth" onchange="setScanMode('oauth')"/>
+              <label class="form-check-label" for="type-oauth">
+                <strong>OAuth</strong> <span class="text-muted small">(login via Salesforce)</span>
+              </label>
+            </div>
           </div>
+
+          <!-- Cookie paste (auth mode) -->
           <div id="auth-fields" style="display:none;">
             <label class="form-label small fw-semibold">Session Cookies</label>
             <textarea name="cookies" class="form-control font-monospace" rows="3" placeholder="sid=00D…; other_cookie=…"></textarea>
             <div class="form-text" style="color:#8b949e;">Copy from browser DevTools → Application → Cookies after logging in.</div>
+          </div>
+
+          <!-- OAuth credentials (oauth mode) -->
+          <div id="oauth-fields" style="display:none;">
+            <div class="card p-3 mb-3" style="background:#161b2280;border-color:#58a6ff33;">
+              <p class="mb-0 small" style="color:#8b949e;">
+                <i class="bi bi-info-circle me-1" style="color:#58a6ff;"></i>
+                You need a <strong>Salesforce Connected App</strong> with OAuth enabled.
+                Set the callback URL to <code>{{ app_base_url }}/auth/sf/callback</code>,
+                scopes: <code>api web</code>.
+              </p>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Salesforce Instance URL <span class="text-danger">*</span></label>
+              <input type="url" name="sf_instance_url" id="sf_instance_url" class="form-control"
+                     value="{{ sf_instance_url }}"
+                     placeholder="https://login.salesforce.com"/>
+              <div class="form-text" style="color:#8b949e;">Use <code>https://test.salesforce.com</code> for sandbox orgs.</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Consumer Key (Client ID) <span class="text-danger">*</span></label>
+              <input type="text" name="sf_client_id" id="sf_client_id" class="form-control font-monospace"
+                     value="{{ sf_client_id }}"
+                     placeholder="3MVG9…"/>
+            </div>
+            <div class="mb-0">
+              <label class="form-label small fw-semibold">Consumer Secret <span class="text-muted fw-normal">(optional — Web Server flow only)</span></label>
+              <input type="password" name="sf_client_secret" class="form-control" placeholder="leave blank for PKCE/public app"/>
+            </div>
           </div>
         </div>
 
@@ -89,7 +126,7 @@
         </div>
 
         <button type="submit" class="btn btn-primary fw-semibold px-4" id="submit-btn">
-          <i class="bi bi-play-fill me-1"></i>Start Scan
+          <i class="bi bi-play-fill me-1"></i><span id="submit-label">Start Scan</span>
         </button>
         <a href="/dashboard" class="btn btn-outline-secondary ms-2">Cancel</a>
 
@@ -102,13 +139,33 @@
 
 {% block extra_scripts %}
 <script>
-function toggleAuth(show) {
-  document.getElementById('auth-fields').style.display = show ? 'block' : 'none';
+const form = document.getElementById('scan-form');
+
+function setScanMode(mode) {
+  document.getElementById('auth-fields').style.display  = (mode === 'auth')  ? 'block' : 'none';
+  document.getElementById('oauth-fields').style.display = (mode === 'oauth') ? 'block' : 'none';
+
+  if (mode === 'oauth') {
+    form.action = '/auth/sf/start';
+    // OAuth flow requires sf_instance_url + sf_client_id — mark required
+    document.getElementById('sf_instance_url').required = true;
+    document.getElementById('sf_client_id').required    = true;
+    document.getElementById('submit-label').textContent = 'Connect to Salesforce & Scan';
+  } else {
+    form.action = '/scans';
+    document.getElementById('sf_instance_url').required = false;
+    document.getElementById('sf_client_id').required    = false;
+    document.getElementById('submit-label').textContent = 'Start Scan';
+  }
 }
-document.getElementById('scan-form').addEventListener('submit', () => {
+
+form.addEventListener('submit', () => {
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting…';
+  const mode = document.querySelector('input[name=scan_type]:checked').value;
+  btn.innerHTML = mode === 'oauth'
+    ? '<span class="spinner-border spinner-border-sm me-2"></span>Redirecting to Salesforce…'
+    : '<span class="spinner-border spinner-border-sm me-2"></span>Starting…';
 });
 </script>
 {% endblock %}

@@ -23,8 +23,10 @@ Or via Docker:
     docker compose up --build
 """
 
+import json
 import os
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -50,12 +52,15 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from web.auth import COOKIE_NAME, create_token, decode_token, hash_password, verify_password
-from web.database import AiAnalysis, Finding, ScanJob, User, _USING_EPHEMERAL_SQLITE, get_db, init_db
+from web.database import AiAnalysis, Finding, OAuthState, ScanJob, User, _USING_EPHEMERAL_SQLITE, get_db, init_db
 from web import scan_runner
 
 # ---------------------------------------------------------------------------
 # App and template setup
 # ---------------------------------------------------------------------------
+
+import logging
+logger = logging.getLogger(__name__)
 
 _BASE_DIR = Path(__file__).parent
 
@@ -115,6 +120,12 @@ def _ctx(user: User | None = None, **kwargs) -> dict:
 _DEFAULT_ADMIN_USERNAME = os.environ.get('DEFAULT_ADMIN_USERNAME', 'phani')
 _DEFAULT_ADMIN_EMAIL    = os.environ.get('DEFAULT_ADMIN_EMAIL', 'phani.dummy@hotmail.com')
 _DEFAULT_ADMIN_PASSWORD = os.environ.get('DEFAULT_ADMIN_PASSWORD', 'Admin@123')
+
+# Optional Salesforce Connected App credentials — pre-fill the OAuth form.
+# Users can always override per-scan; these are convenience defaults.
+_SF_INSTANCE_URL  = os.environ.get('SF_INSTANCE_URL', 'https://login.salesforce.com')
+_SF_CLIENT_ID     = os.environ.get('SF_CLIENT_ID', '')
+_SF_CLIENT_SECRET = os.environ.get('SF_CLIENT_SECRET', '')
 
 
 def _seed_default_admin(db) -> None:
@@ -276,7 +287,11 @@ def scan_new(request: Request, db: Session = Depends(get_db)):
 	user = _get_user(request, db)
 	if not user:
 		return RedirectResponse('/login', status_code=302)
-	return templates.TemplateResponse(request, 'scan_new.html', _ctx(user))
+	return templates.TemplateResponse(request, 'scan_new.html', _ctx(
+		user,
+		sf_instance_url=_SF_INSTANCE_URL,
+		sf_client_id=_SF_CLIENT_ID,
+	))
 
 
 @app.post('/scans')
@@ -319,6 +334,139 @@ def scan_create(
 		'proxy': proxy.strip() or None,
 		'cookies': cookies.strip() or None,
 		'openai_api_key': openai_key.strip() or None,
+	})
+
+	return RedirectResponse(f'/scans/{job.id}', status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Salesforce OAuth 2.0 web flow  (for authenticated scans via browser login)
+# ---------------------------------------------------------------------------
+
+@app.post('/auth/sf/start')
+def sf_oauth_start(
+	request: Request,
+	target_url: str = Form(...),
+	app_path: str = Form(''),
+	aura_path: str = Form(''),
+	proxy: str = Form(''),
+	openai_key: str = Form(''),
+	sf_instance_url: str = Form(...),
+	sf_client_id: str = Form(...),
+	sf_client_secret: str = Form(''),
+	db: Session = Depends(get_db),
+):
+	"""Store pending scan params + Salesforce credentials, then redirect the
+	user's browser to the Salesforce /authorize page to complete login."""
+	user = _get_user(request, db)
+	if not user:
+		return RedirectResponse('/login', status_code=302)
+
+	sf_instance_url = sf_instance_url.strip().rstrip('/')
+	sf_client_id = sf_client_id.strip()
+
+	if not target_url.strip():
+		return RedirectResponse('/scans/new?error=Target+URL+is+required', status_code=302)
+	if not sf_client_id:
+		return RedirectResponse('/scans/new?error=Salesforce+Consumer+Key+is+required', status_code=302)
+
+	web_redirect_uri = f'{APP_BASE_URL}/auth/sf/callback'
+	state_id = str(uuid.uuid4())
+
+	oauth_state = OAuthState(
+		id=state_id,
+		user_id=user.id,
+		scan_params=json.dumps({
+			'target_url': target_url.strip(),
+			'app_path': app_path.strip() or None,
+			'aura_path': aura_path.strip() or None,
+			'proxy': proxy.strip() or None,
+			'openai_api_key': openai_key.strip() or None,
+		}),
+		sf_instance_url=sf_instance_url,
+		sf_client_id=sf_client_id,
+		sf_client_secret=sf_client_secret.strip() or None,
+		redirect_uri=web_redirect_uri,
+	)
+	db.add(oauth_state)
+	db.commit()
+
+	# Build the Salesforce authorization URL and redirect the user's browser.
+	from ui.oauth_handler import SalesforceOAuthHandler
+	handler = SalesforceOAuthHandler(
+		instance_url=sf_instance_url,
+		client_id=sf_client_id,
+		client_secret=sf_client_secret.strip() or None,
+	)
+	auth_url = handler.get_authorization_url(redirect_uri=web_redirect_uri, state=state_id)
+	return RedirectResponse(auth_url, status_code=302)
+
+
+@app.get('/auth/sf/callback')
+def sf_oauth_callback(
+	request: Request,
+	code: str = '',
+	state: str = '',
+	error: str = '',
+	error_description: str = '',
+	db: Session = Depends(get_db),
+):
+	"""Salesforce redirects here after the user logs in.  Exchange the
+	authorization code for an access token, derive the session cookie,
+	and launch the authenticated scan."""
+	if error:
+		msg = (error_description or error).replace(' ', '+')
+		return RedirectResponse(f'/scans/new?error=Salesforce+OAuth+error:+{msg}', status_code=302)
+
+	if not code or not state:
+		return RedirectResponse('/scans/new?error=Invalid+OAuth+callback+(missing+code+or+state)', status_code=302)
+
+	oauth_state = db.query(OAuthState).filter(OAuthState.id == state).first()
+	if not oauth_state:
+		return RedirectResponse('/scans/new?error=OAuth+state+expired+or+not+found.+Please+try+again.', status_code=302)
+
+	user = db.query(User).filter(User.id == oauth_state.user_id).first()
+	if not user:
+		db.delete(oauth_state)
+		db.commit()
+		return RedirectResponse('/login', status_code=302)
+
+	# Exchange the authorization code for an access token.
+	try:
+		from ui.oauth_handler import SalesforceOAuthHandler
+		handler = SalesforceOAuthHandler(
+			instance_url=oauth_state.sf_instance_url,
+			client_id=oauth_state.sf_client_id,
+			client_secret=oauth_state.sf_client_secret,
+		)
+		token_data = handler._exchange_code(code=code, redirect_uri=oauth_state.redirect_uri)
+		session_cookie = handler.get_session_cookie(token_data['access_token'])
+	except Exception as exc:
+		logger.error('Salesforce OAuth token exchange failed: %s', exc)
+		db.delete(oauth_state)
+		db.commit()
+		return RedirectResponse('/scans/new?error=Salesforce+token+exchange+failed.+Check+credentials.', status_code=302)
+
+	# All good — create the scan job and launch it.
+	scan_params = json.loads(oauth_state.scan_params)
+	job = ScanJob(
+		user_id=user.id,
+		target_url=scan_params['target_url'],
+		scan_type='auth',
+		app_path=scan_params.get('app_path'),
+		aura_path=scan_params.get('aura_path'),
+		proxy=scan_params.get('proxy'),
+		status='pending',
+	)
+	db.add(job)
+	db.delete(oauth_state)
+	db.commit()
+	db.refresh(job)
+
+	scan_runner.launch(job.id, {
+		**scan_params,
+		'scan_type': 'auth',
+		'cookies': session_cookie,
 	})
 
 	return RedirectResponse(f'/scans/{job.id}', status_code=302)

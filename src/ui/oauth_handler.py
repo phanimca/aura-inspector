@@ -118,15 +118,17 @@ class SalesforceOAuthHandler:
 	# Public API
 	# ------------------------------------------------------------------
 
-	def get_authorization_url(self) -> str:
+	def get_authorization_url(self, redirect_uri: str = None, state: str = None) -> str:
 		"""Build the Salesforce /authorize URL that the user must visit."""
 		params = {
 			'response_type': 'code',
 			'client_id': self.client_id,
-			'redirect_uri': REDIRECT_URI,
+			'redirect_uri': redirect_uri or REDIRECT_URI,
 			'scope': 'api web',
 			'prompt': 'login',
 		}
+		if state:
+			params['state'] = state
 		return f'{self.instance_url}/services/oauth2/authorize?{urlencode(params)}'
 
 	def authenticate_browser_flow(self, timeout_seconds: int = 120) -> dict:
@@ -147,7 +149,7 @@ class SalesforceOAuthHandler:
 		server_thread = threading.Thread(target=server.serve_forever, daemon=True)
 		server_thread.start()
 
-		auth_url = self.get_authorization_url()
+		auth_url = self.get_authorization_url(redirect_uri=REDIRECT_URI)
 		webbrowser.open(auth_url)
 
 		deadline = time.time() + timeout_seconds
@@ -165,7 +167,7 @@ class SalesforceOAuthHandler:
 		if _CallbackHandler.auth_error:
 			raise ValueError(f'OAuth authorization error: {_CallbackHandler.auth_error}')
 
-		return self._exchange_code(code=_CallbackHandler.auth_code)
+		return self._exchange_code(code=_CallbackHandler.auth_code, redirect_uri=REDIRECT_URI)
 
 	def get_session_cookie(self, access_token: str, verify_with_userinfo: bool = True) -> str:
 		"""
@@ -183,12 +185,12 @@ class SalesforceOAuthHandler:
 	# Internal helpers
 	# ------------------------------------------------------------------
 
-	def _exchange_code(self, code: str) -> dict:
+	def _exchange_code(self, code: str, redirect_uri: str = None) -> dict:
 		"""POST to /services/oauth2/token and return the response payload."""
 		payload = {
 			'grant_type': 'authorization_code',
 			'code': code,
-			'redirect_uri': REDIRECT_URI,
+			'redirect_uri': redirect_uri or REDIRECT_URI,
 			'client_id': self.client_id,
 		}
 		if self.client_secret:

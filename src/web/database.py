@@ -148,6 +148,26 @@ class AiAnalysis(Base):
 	scan_job = relationship('ScanJob', back_populates='ai_analysis')
 
 
+class OAuthState(Base):
+	"""Temporary record that links an in-flight Salesforce OAuth flow to a pending scan.
+
+	Lifecycle:
+	  1. Created by POST /auth/sf/start (stores scan params + SF credentials).
+	  2. Passed as `state` to Salesforce's /authorize URL.
+	  3. Consumed (deleted) by GET /auth/sf/callback after the code is exchanged.
+	  4. Rows older than 10 minutes can be considered stale and garbage-collected.
+	"""
+	__tablename__ = 'oauth_states'
+	id = Column(String(64), primary_key=True)          # UUID4 — also the OAuth `state` param
+	user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+	created_at = Column(DateTime, default=datetime.utcnow)
+	scan_params = Column(Text, nullable=False)           # JSON: target_url, app_path, ...
+	sf_instance_url = Column(String(500), nullable=False)
+	sf_client_id = Column(String(500), nullable=False)
+	sf_client_secret = Column(String(500))               # Optional — only for web-server flow
+	redirect_uri = Column(String(500), nullable=False)   # Must match token exchange exactly
+
+
 # FastAPI dependency: yields a DB session and closes it when the request ends
 def get_db():
 	db = SessionLocal()
