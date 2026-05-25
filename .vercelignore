@@ -1,0 +1,24 @@
+# Vercel deployment exclusions
+# These paths are not needed on the deployed instance.
+
+.venv/
+data/
+results/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.*
+!.env.example
+
+# Development and test files
+tests/
+scripts/
+docs/
+
+# Local IDE/editor config
+.vscode/
+.idea/
+*.swp

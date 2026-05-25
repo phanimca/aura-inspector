@@ -61,10 +61,14 @@ _BASE_DIR = Path(__file__).parent
 
 app = FastAPI(title='Aura Inspector', docs_url=None, redoc_url=None)
 
-# Mount static files directory (CSS/images if any)
+# Mount static files directory (CSS/images if any).
+# Guard against read-only serverless filesystems (e.g. Vercel).
 _STATIC_DIR = _BASE_DIR / 'static'
-_STATIC_DIR.mkdir(exist_ok=True)
-app.mount('/static', StaticFiles(directory=str(_STATIC_DIR)), name='static')
+try:
+	_STATIC_DIR.mkdir(exist_ok=True)
+	app.mount('/static', StaticFiles(directory=str(_STATIC_DIR)), name='static')
+except (OSError, RuntimeError):
+	pass  # Static files unavailable on read-only filesystem — skip gracefully
 
 templates = Jinja2Templates(directory=str(_BASE_DIR / 'templates'))
 

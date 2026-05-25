@@ -14,9 +14,11 @@
 
 """
 SQLAlchemy models and session factory for the Aura Inspector web application.
-Database: SQLite at <project-root>/data/aura_inspector.db
+Database: SQLite at <project-root>/data/aura_inspector.db (local)
+         or the URL specified by the DATABASE_URL environment variable (cloud).
 """
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -26,11 +28,22 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
-# Ensure the data directory exists alongside the project root
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / 'data'
-_DATA_DIR.mkdir(exist_ok=True)
-
-DATABASE_URL = f'sqlite:///{_DATA_DIR}/aura_inspector.db'
+# Resolve the database URL.
+# Priority:
+#   1. DATABASE_URL env var  — set this in Vercel/cloud to point at a managed DB
+#                               (e.g. postgresql://... or sqlite:////tmp/...)
+#   2. Local data/ directory — used when running locally or in Docker
+#   3. /tmp fallback          — used on read-only serverless filesystems (Vercel)
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+	_DATA_DIR = Path(__file__).resolve().parent.parent.parent / 'data'
+	try:
+		_DATA_DIR.mkdir(exist_ok=True)
+		DATABASE_URL = f'sqlite:///{_DATA_DIR}/aura_inspector.db'
+	except OSError:
+		# Serverless environment with read-only project root (e.g. Vercel) —
+		# fall back to the writable /tmp directory.
+		DATABASE_URL = 'sqlite:////tmp/aura_inspector.db'
 
 engine = create_engine(DATABASE_URL, connect_args={'check_same_thread': False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

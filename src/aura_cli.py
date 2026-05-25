@@ -14,7 +14,7 @@
 
 
 from aura_helper import AuraHelper
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from colored_logger import init_logger,logger,add_logging_level
 import logging
 import sys
@@ -227,7 +227,7 @@ def _db_persist_results(scan_job_id: int, scan_data: dict, aura) -> None:
 		if job:
 			job.status       = 'completed'
 			job.risk_score   = risk
-			job.completed_at = datetime.utcnow()
+			job.completed_at = datetime.now(timezone.utc)
 
 		db.commit()
 		logger.info(f"[DB] Persisted {len(findings)} finding(s) for scan job {scan_job_id} (risk={risk})")
