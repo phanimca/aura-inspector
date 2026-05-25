@@ -83,11 +83,13 @@
             <div id="oauth-section">
               <div class="card p-3 mb-3" style="background:#0d1117;border-color:#58a6ff33;">
                 <p class="mb-0 small" style="color:#8b949e;">
-                  <i class="bi bi-info-circle me-1" style="color:#58a6ff;"></i>
-                  Clicking <strong>Login &amp; Scan</strong> opens the Salesforce login page in the same tab.
-                  After you log in, the scan starts automatically — no credentials are stored in this app.
+                  <i class="bi bi-box-arrow-up-right me-1" style="color:#58a6ff;"></i>
+                  Clicking <strong>Login &amp; Scan</strong> opens a <strong>Salesforce login popup</strong>.
+                  Log in there — the session is captured automatically and the scan starts in this tab.
+                  No credentials are stored in this app.
                 </p>
               </div>
+              <div id="oauth-error" class="alert-danger-custom mb-2" style="display:none;"></div>
 
               {% if sf_auth_enabled %}
               <!-- Connected App settings (optional, collapsed) -->
@@ -210,6 +212,7 @@ const sfAuthEnabled = form.dataset.sfAuthEnabled === 'true';
 
 // Current resolved auth mode: 'guest' | 'oauth' | 'cookie'
 let _scanMode = 'guest';
+let _sfPopup = null;
 
 function setScanMode(scanType) {
   const authFields = document.getElementById('auth-fields');
@@ -217,7 +220,6 @@ function setScanMode(scanType) {
   if (scanType === 'guest') {
     _scanMode = 'guest';
   } else {
-    // Default to whichever auth method radio is checked
     const methodRadio = document.querySelector('input[name=auth_method]:checked');
     _scanMode = methodRadio ? methodRadio.value : 'oauth';
   }
@@ -232,26 +234,27 @@ function setAuthMethod(method) {
 function _applyMode() {
   const oauthSection  = document.getElementById('oauth-section');
   const cookieSection = document.getElementById('cookie-section');
+  const icon  = document.getElementById('submit-icon');
+  const label = document.getElementById('submit-label');
 
   if (_scanMode === 'oauth') {
     oauthSection.style.display  = 'block';
     cookieSection.style.display = 'none';
-    form.action = sfAuthEnabled ? '/auth/sf/start' : '/scans';
-    document.getElementById('submit-icon').className  = sfAuthEnabled ? 'bi bi-box-arrow-up-right me-1' : 'bi bi-play-fill me-1';
-    document.getElementById('submit-label').textContent = sfAuthEnabled ? 'Login & Scan' : 'Start Scan';
+    form.action = '/scans';
+    icon.className  = sfAuthEnabled ? 'bi bi-box-arrow-up-right me-1' : 'bi bi-play-fill me-1';
+    label.textContent = sfAuthEnabled ? 'Login & Scan' : 'Start Scan';
   } else if (_scanMode === 'cookie') {
     oauthSection.style.display  = 'none';
     cookieSection.style.display = 'block';
     form.action = '/scans';
-    document.getElementById('submit-icon').className  = 'bi bi-play-fill me-1';
-    document.getElementById('submit-label').textContent = 'Start Scan';
+    icon.className  = 'bi bi-play-fill me-1';
+    label.textContent = 'Start Scan';
   } else {
-    // guest
     oauthSection.style.display  = 'none';
     cookieSection.style.display = 'none';
     form.action = '/scans';
-    document.getElementById('submit-icon').className  = 'bi bi-play-fill me-1';
-    document.getElementById('submit-label').textContent = 'Start Scan';
+    icon.className  = 'bi bi-play-fill me-1';
+    label.textContent = 'Start Scan';
   }
 }
 
@@ -271,8 +274,115 @@ function syncCustomUrl(val) {
   document.getElementById('sf_login_url_hidden').value = val.trim();
 }
 
-form.addEventListener('submit', (e) => {
-  // Validate cookie field when cookie auth is selected
+// -----------------------------------------------------------------------
+// Popup OAuth flow
+// -----------------------------------------------------------------------
+
+// Listen for messages posted by the OAuth callback page inside the popup.
+window.addEventListener('message', function (event) {
+  // Accept messages only from our own origin (same-origin postMessage).
+  if (event.origin !== window.location.origin) return;
+  const data = event.data;
+  if (!data || !data.type) return;
+
+  const btn = document.getElementById('submit-btn');
+
+  if (data.type === 'sf_session') {
+    // Received session cookie from popup — fill form and submit to /scans.
+    document.getElementById('cookies-input').value = data.cookies || '';
+    // Make sure scan_type=auth reaches the server.
+    const authRadio = document.getElementById('type-auth');
+    if (authRadio) authRadio.checked = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting scan…';
+    form.action = '/scans';
+    form.submit();
+
+  } else if (data.type === 'sf_error') {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-box-arrow-up-right me-1"></i>Login & Scan';
+    const errDiv = document.getElementById('oauth-error');
+    if (errDiv) {
+      errDiv.textContent = data.message || 'Salesforce login failed.';
+      errDiv.style.display = 'block';
+    }
+  }
+});
+
+function _openSfPopup() {
+  const targetUrl = form.querySelector('[name=target_url]').value.trim();
+  if (!targetUrl) {
+    alert('Please enter the target site URL first.');
+    return;
+  }
+
+  const sfLoginUrl = (document.getElementById('sf_login_url_hidden') || {}).value ||
+                     'https://login.salesforce.com';
+
+  // Validate custom domain field if visible.
+  const sel = document.getElementById('sf_login_url');
+  if (sel && sel.value === 'custom') {
+    const custom = document.getElementById('sf_login_url_custom').value.trim();
+    if (!custom) { alert('Please enter your custom Salesforce login URL.'); return; }
+  }
+
+  const params = new URLSearchParams({
+    target_url:   targetUrl,
+    sf_login_url: sfLoginUrl,
+    app_path:     (form.querySelector('[name=app_path]')   || {}).value || '',
+    aura_path:    (form.querySelector('[name=aura_path]')  || {}).value || '',
+    proxy:        (form.querySelector('[name=proxy]')      || {}).value || '',
+    openai_key:   (form.querySelector('[name=openai_key]') || {}).value || '',
+  });
+
+  // Hide previous error
+  const errDiv = document.getElementById('oauth-error');
+  if (errDiv) errDiv.style.display = 'none';
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Waiting for Salesforce login…';
+
+  const w = 620, h = 720;
+  const left = Math.max(0, Math.round((screen.width  - w) / 2));
+  const top  = Math.max(0, Math.round((screen.height - h) / 2));
+  _sfPopup = window.open(
+    '/auth/sf/popup?' + params.toString(),
+    'sflogin',
+    `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+  );
+
+  if (!_sfPopup || _sfPopup.closed || typeof _sfPopup.closed === 'undefined') {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-box-arrow-up-right me-1"></i>Login & Scan';
+    alert('Popup was blocked. Please allow popups for this site and try again.');
+    return;
+  }
+
+  // Re-enable button if user closes popup without completing login.
+  const poll = setInterval(function () {
+    if (_sfPopup && _sfPopup.closed) {
+      clearInterval(poll);
+      if (btn.disabled) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-box-arrow-up-right me-1"></i>Login & Scan';
+      }
+    }
+  }, 500);
+}
+
+// -----------------------------------------------------------------------
+// Form submit handler
+// -----------------------------------------------------------------------
+
+form.addEventListener('submit', function (e) {
+  // OAuth mode with SF configured — open popup instead of submitting form.
+  if (_scanMode === 'oauth' && sfAuthEnabled) {
+    e.preventDefault();
+    _openSfPopup();
+    return;
+  }
+
+  // Cookie mode — validate the textarea.
   if (_scanMode === 'cookie') {
     const cookieVal = document.getElementById('cookies-input').value.trim();
     if (!cookieVal) {
@@ -282,20 +392,9 @@ form.addEventListener('submit', (e) => {
     }
   }
 
-  // Validate custom domain field
-  if (_scanMode === 'oauth') {
-    const sel = document.getElementById('sf_login_url');
-    if (sel && sel.value === 'custom') {
-      const custom = document.getElementById('sf_login_url_custom').value.trim();
-      if (!custom) { e.preventDefault(); alert('Please enter your custom Salesforce login URL.'); return; }
-    }
-  }
-
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
-  btn.innerHTML = (_scanMode === 'oauth' && sfAuthEnabled)
-    ? '<span class="spinner-border spinner-border-sm me-2"></span>Redirecting to Salesforce…'
-    : '<span class="spinner-border spinner-border-sm me-2"></span>Starting scan…';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting scan…';
 });
 </script>
 {% endblock %}

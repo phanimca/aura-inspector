@@ -45,7 +45,7 @@ _SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SRC_DIR not in sys.path:
 	sys.path.insert(0, _SRC_DIR)
 
-from fastapi import Depends, FastAPI, Form, Request
+from fastapi import Depends, FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -378,6 +378,101 @@ def scan_create(
 # Salesforce OAuth 2.0 web flow  (for authenticated scans via browser login)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Popup OAuth helper
+# ---------------------------------------------------------------------------
+
+def _popup_html(script_body: str) -> HTMLResponse:
+	"""Return a minimal HTML page that runs *script_body* and closes itself."""
+	html = (
+		'<!doctype html><html><head><meta charset="utf-8">'
+		'<title>Salesforce Login</title>'
+		'<style>body{background:#0d1117;color:#c9d1d9;font-family:system-ui,sans-serif;'
+		'display:flex;align-items:center;justify-content:center;height:100vh;margin:0}'
+		'.box{text-align:center;max-width:340px}'
+		'.sp{width:40px;height:40px;border:3px solid #30363d;border-top-color:#58a6ff;'
+		'border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 1rem}'
+		'@keyframes spin{to{transform:rotate(360deg)}}</style></head>'
+		'<body><div class="box"><div class="sp" id="sp"></div>'
+		'<p id="msg" style="color:#8b949e;font-size:.9rem;">Processing…</p></div>'
+		f'<script>{script_body}</script></body></html>'
+	)
+	return HTMLResponse(content=html)
+
+
+@app.get('/auth/sf/popup')
+def sf_oauth_popup(
+	request: Request,
+	target_url: str = Query(''),
+	app_path: str = Query(''),
+	aura_path: str = Query(''),
+	proxy: str = Query(''),
+	openai_key: str = Query(''),
+	sf_login_url: str = Query('https://login.salesforce.com'),
+	db: Session = Depends(get_db),
+):
+	"""Start the Salesforce OAuth flow in a popup window.
+	On completion the popup posts the session cookie back to the opener."""
+	user = _get_user(request, db)
+	if not user:
+		# Redirect to login inside the popup; after login Salesforce flow will restart.
+		return RedirectResponse('/login', status_code=302)
+
+	if not target_url.strip():
+		return _popup_html(
+			'window.opener&&window.opener.postMessage('
+			'{type:"sf_error",message:"Target URL is required"},'
+			'window.location.origin);window.close();'
+		)
+
+	if not _SF_CLIENT_ID:
+		return _popup_html(
+			'window.opener&&window.opener.postMessage('
+			'{type:"sf_error",message:"SF_CLIENT_ID is not configured on this server."},'
+			'window.location.origin);window.close();'
+		)
+
+	sf_instance_url = sf_login_url.strip().rstrip('/')
+	web_redirect_uri = f'{APP_BASE_URL}/auth/sf/callback'
+	state_id = str(uuid.uuid4())
+
+	from ui.oauth_handler import SalesforceOAuthHandler, generate_pkce_pair
+	code_verifier, code_challenge = generate_pkce_pair()
+
+	oauth_state = OAuthState(
+		id=state_id,
+		user_id=user.id,
+		scan_params=json.dumps({
+			'target_url': target_url.strip(),
+			'app_path': app_path.strip() or None,
+			'aura_path': aura_path.strip() or None,
+			'proxy': proxy.strip() or None,
+			'openai_api_key': openai_key.strip() or None,
+			'openai_base_url': _AI_BASE_URL or None,
+			'popup': True,
+		}),
+		sf_instance_url=sf_instance_url,
+		sf_client_id=_SF_CLIENT_ID,
+		sf_client_secret=_SF_CLIENT_SECRET or None,
+		redirect_uri=web_redirect_uri,
+		code_verifier=code_verifier,
+	)
+	db.add(oauth_state)
+	db.commit()
+
+	handler = SalesforceOAuthHandler(
+		instance_url=sf_instance_url,
+		client_id=_SF_CLIENT_ID,
+		client_secret=_SF_CLIENT_SECRET or None,
+	)
+	auth_url = handler.get_authorization_url(
+		redirect_uri=web_redirect_uri,
+		state=state_id,
+		code_challenge=code_challenge,
+	)
+	return RedirectResponse(auth_url, status_code=302)
+
+
 @app.post('/auth/sf/start')
 def sf_oauth_start(
 	request: Request,
@@ -461,7 +556,34 @@ def sf_oauth_callback(
 ):
 	"""Salesforce redirects here after the user logs in.  Exchange the
 	authorization code for an access token, derive the session cookie,
-	and launch the authenticated scan."""
+	and — depending on how the flow was started — either launch the scan
+	directly (legacy POST flow) or postMessage the cookie back to the
+	opener popup so the form can submit it (popup flow)."""
+
+	# Detect popup mode early so error responses can close the popup.
+	is_popup = False
+	if state:
+		_early = db.query(OAuthState).filter(OAuthState.id == state).first()
+		if _early:
+			try:
+				is_popup = json.loads(_early.scan_params or '{}').get('popup', False)
+			except Exception:
+				pass
+
+	def _err(msg: str):
+		if is_popup:
+			script = (
+				f'(function(){{'
+				f'var p={{type:"sf_error",message:{json.dumps(msg)}}};'
+				f'document.getElementById("sp").style.display="none";'
+				f'document.getElementById("msg").textContent={json.dumps(msg)};'
+				f'if(window.opener){{window.opener.postMessage(p,window.location.origin);'
+				f'setTimeout(function(){{window.close();}},1500);}}'
+				f'}})();'
+			)
+			return _popup_html(script)
+		return RedirectResponse(f"/scans/new?error={msg.replace(' ', '+')}", status_code=302)
+
 	if error:
 		desc = (error_description or error).strip()
 		# Provide actionable guidance for the most common Salesforce OAuth errors.
@@ -481,21 +603,25 @@ def sf_oauth_callback(
 			)
 		else:
 			msg = desc
-		return RedirectResponse(
-			f"/scans/new?error={msg.replace(' ', '+')}", status_code=302
-		)
+		return _err(msg)
 
 	if not code or not state:
-		return RedirectResponse('/scans/new?error=Invalid+OAuth+callback+(missing+code+or+state)', status_code=302)
+		return _err('Invalid OAuth callback (missing code or state)')
 
 	oauth_state = db.query(OAuthState).filter(OAuthState.id == state).first()
 	if not oauth_state:
-		return RedirectResponse('/scans/new?error=OAuth+state+expired+or+not+found.+Please+try+again.', status_code=302)
+		return _err('OAuth state expired or not found. Please try again.')
 
 	user = db.query(User).filter(User.id == oauth_state.user_id).first()
 	if not user:
 		db.delete(oauth_state)
 		db.commit()
+		if is_popup:
+			return _popup_html(
+				'window.opener&&window.opener.postMessage({type:"sf_error",'
+				'message:"Session expired — please log in again."},'
+				'window.location.origin);window.close();'
+			)
 		return RedirectResponse('/login', status_code=302)
 
 	# Exchange the authorization code for an access token.
@@ -516,10 +642,30 @@ def sf_oauth_callback(
 		logger.error('Salesforce OAuth token exchange failed: %s', exc)
 		db.delete(oauth_state)
 		db.commit()
-		return RedirectResponse('/scans/new?error=Salesforce+token+exchange+failed.+Check+credentials.', status_code=302)
+		return _err('Salesforce token exchange failed. Check Connected App credentials.')
 
-	# All good — create the scan job and launch it.
 	scan_params = json.loads(oauth_state.scan_params)
+	db.delete(oauth_state)
+	db.commit()
+
+	if scan_params.get('popup'):
+		# Popup flow — postMessage the session cookie back to the opener.
+		# The parent form fills the cookies field and submits to /scans.
+		cookie_json = json.dumps(session_cookie)
+		script = (
+			f'(function(){{'
+			f'var p={{type:"sf_session",cookies:{cookie_json}}};'
+			f'document.getElementById("sp").style.display="none";'
+			f'document.getElementById("msg").textContent="Login successful! Starting scan\u2026";'
+			f'if(window.opener){{window.opener.postMessage(p,window.location.origin);'
+			f'setTimeout(function(){{window.close();}},800);}}'
+			f'else{{document.getElementById("msg").textContent='
+			f'"Login successful. You may close this window.";}}'
+			f'}})();'
+		)
+		return _popup_html(script)
+
+	# Legacy full-page flow — start the scan directly and redirect.
 	job = ScanJob(
 		user_id=user.id,
 		target_url=scan_params['target_url'],
@@ -530,7 +676,6 @@ def sf_oauth_callback(
 		status='pending',
 	)
 	db.add(job)
-	db.delete(oauth_state)
 	db.commit()
 	db.refresh(job)
 
