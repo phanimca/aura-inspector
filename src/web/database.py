@@ -45,7 +45,9 @@ if not DATABASE_URL:
 		# fall back to the writable /tmp directory.
 		DATABASE_URL = 'sqlite:////tmp/aura_inspector.db'
 
-engine = create_engine(DATABASE_URL, connect_args={'check_same_thread': False})
+# connect_args is SQLite-specific; omit it for other databases (e.g. PostgreSQL)
+_connect_args = {'check_same_thread': False} if DATABASE_URL.startswith('sqlite') else {}
+engine = create_engine(DATABASE_URL, connect_args=_connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
