@@ -1,12 +1,6 @@
 {
   "version": 2,
   "name": "phani-aura-inspector",
-  "functions": {
-    "api/index.py": {
-      "runtime": "python3.11",
-      "maxDuration": 60
-    }
-  },
   "builds": [
     {
       "src": "api/index.py",
