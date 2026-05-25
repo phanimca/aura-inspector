@@ -289,8 +289,8 @@ def scan_new(request: Request, db: Session = Depends(get_db)):
 		return RedirectResponse('/login', status_code=302)
 	return templates.TemplateResponse(request, 'scan_new.html', _ctx(
 		user,
-		sf_instance_url=_SF_INSTANCE_URL,
-		sf_client_id=_SF_CLIENT_ID,
+		sf_login_url=_SF_INSTANCE_URL,
+		sf_auth_enabled=bool(_SF_CLIENT_ID),
 	))
 
 
@@ -351,25 +351,27 @@ def sf_oauth_start(
 	aura_path: str = Form(''),
 	proxy: str = Form(''),
 	openai_key: str = Form(''),
-	sf_instance_url: str = Form(...),
-	sf_client_id: str = Form(...),
-	sf_client_secret: str = Form(''),
+	sf_login_url: str = Form('https://login.salesforce.com'),
 	db: Session = Depends(get_db),
 ):
-	"""Store pending scan params + Salesforce credentials, then redirect the
-	user's browser to the Salesforce /authorize page to complete login."""
+	"""Redirect the user to Salesforce's own login page.  No Connected App
+	credentials are required from the user — the app's pre-configured
+	SF_CLIENT_ID / SF_CLIENT_SECRET env vars drive the OAuth flow."""
 	user = _get_user(request, db)
 	if not user:
 		return RedirectResponse('/login', status_code=302)
 
-	sf_instance_url = sf_instance_url.strip().rstrip('/')
-	sf_client_id = sf_client_id.strip()
-
 	if not target_url.strip():
 		return RedirectResponse('/scans/new?error=Target+URL+is+required', status_code=302)
-	if not sf_client_id:
-		return RedirectResponse('/scans/new?error=Salesforce+Consumer+Key+is+required', status_code=302)
 
+	if not _SF_CLIENT_ID:
+		return RedirectResponse(
+			'/scans/new?error=Authenticated+scans+are+not+configured+on+this+server.+'
+			'Set+SF_CLIENT_ID+in+environment+variables.',
+			status_code=302,
+		)
+
+	sf_instance_url = sf_login_url.strip().rstrip('/')
 	web_redirect_uri = f'{APP_BASE_URL}/auth/sf/callback'
 	state_id = str(uuid.uuid4())
 
@@ -384,8 +386,8 @@ def sf_oauth_start(
 			'openai_api_key': openai_key.strip() or None,
 		}),
 		sf_instance_url=sf_instance_url,
-		sf_client_id=sf_client_id,
-		sf_client_secret=sf_client_secret.strip() or None,
+		sf_client_id=_SF_CLIENT_ID,
+		sf_client_secret=_SF_CLIENT_SECRET or None,
 		redirect_uri=web_redirect_uri,
 	)
 	db.add(oauth_state)
@@ -395,8 +397,8 @@ def sf_oauth_start(
 	from ui.oauth_handler import SalesforceOAuthHandler
 	handler = SalesforceOAuthHandler(
 		instance_url=sf_instance_url,
-		client_id=sf_client_id,
-		client_secret=sf_client_secret.strip() or None,
+		client_id=_SF_CLIENT_ID,
+		client_secret=_SF_CLIENT_SECRET or None,
 	)
 	auth_url = handler.get_authorization_url(redirect_uri=web_redirect_uri, state=state_id)
 	return RedirectResponse(auth_url, status_code=302)

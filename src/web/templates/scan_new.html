@@ -50,51 +50,44 @@
             <div class="form-check">
               <input class="form-check-input" type="radio" name="scan_type" id="type-auth" value="auth" onchange="setScanMode('auth')"/>
               <label class="form-check-label" for="type-auth">
-                <strong>Authenticated</strong> <span class="text-muted small">(paste cookies)</span>
-              </label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="scan_type" id="type-oauth" value="oauth" onchange="setScanMode('oauth')"/>
-              <label class="form-check-label" for="type-oauth">
-                <strong>OAuth</strong> <span class="text-muted small">(login via Salesforce)</span>
+                <strong>Authenticated</strong> <span class="text-muted small">(login via Salesforce)</span>
               </label>
             </div>
           </div>
 
-          <!-- Cookie paste (auth mode) -->
+          <!-- Salesforce login (auth mode) -->
           <div id="auth-fields" style="display:none;">
-            <label class="form-label small fw-semibold">Session Cookies</label>
-            <textarea name="cookies" class="form-control font-monospace" rows="3" placeholder="sid=00D…; other_cookie=…"></textarea>
-            <div class="form-text" style="color:#8b949e;">Copy from browser DevTools → Application → Cookies after logging in.</div>
-          </div>
-
-          <!-- OAuth credentials (oauth mode) -->
-          <div id="oauth-fields" style="display:none;">
-            <div class="card p-3 mb-3" style="background:#161b2280;border-color:#58a6ff33;">
+            {% if sf_auth_enabled %}
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Salesforce Login URL</label>
+              <select name="sf_login_url" id="sf_login_url" class="form-control" onchange="toggleCustomUrl(this.value)">
+                <option value="https://login.salesforce.com"{% if sf_login_url == 'https://login.salesforce.com' %} selected{% endif %}>Production — login.salesforce.com</option>
+                <option value="https://test.salesforce.com"{% if sf_login_url == 'https://test.salesforce.com' %} selected{% endif %}>Sandbox — test.salesforce.com</option>
+                <option value="custom">Custom domain (My Domain)…</option>
+              </select>
+            </div>
+            <div id="custom-url-field" class="mb-3" style="display:none;">
+              <label class="form-label small fw-semibold">Custom Login URL</label>
+              <input type="url" id="sf_login_url_custom" class="form-control" placeholder="https://myorg.my.salesforce.com"
+                     oninput="syncCustomUrl(this.value)"/>
+              <div class="form-text" style="color:#8b949e;">Enter your My Domain login URL (e.g. <code>https://mycompany.my.salesforce.com</code>).</div>
+            </div>
+            <div class="card p-3" style="background:#0d1117;border-color:#58a6ff33;">
               <p class="mb-0 small" style="color:#8b949e;">
-                <i class="bi bi-info-circle me-1" style="color:#58a6ff;"></i>
-                You need a <strong>Salesforce Connected App</strong> with OAuth enabled.
-                Set the callback URL to <code>{{ app_base_url }}/auth/sf/callback</code>,
-                scopes: <code>api web</code>.
+                <i class="bi bi-box-arrow-up-right me-1" style="color:#58a6ff;"></i>
+                Clicking <strong>Login &amp; Scan</strong> will open the Salesforce login page.
+                Enter your Salesforce username and password there — no credentials are stored in this app.
               </p>
             </div>
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Salesforce Instance URL <span class="text-danger">*</span></label>
-              <input type="url" name="sf_instance_url" id="sf_instance_url" class="form-control"
-                     value="{{ sf_instance_url }}"
-                     placeholder="https://login.salesforce.com"/>
-              <div class="form-text" style="color:#8b949e;">Use <code>https://test.salesforce.com</code> for sandbox orgs.</div>
+            {% else %}
+            <div class="card p-3" style="background:#0d1117;border-color:#f8514933;">
+              <p class="mb-0 small" style="color:#f85149;">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Authenticated scans are not available — the server is not configured with Salesforce OAuth credentials.
+                Contact the site admin to set the <code>SF_CLIENT_ID</code> environment variable.
+              </p>
             </div>
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Consumer Key (Client ID) <span class="text-danger">*</span></label>
-              <input type="text" name="sf_client_id" id="sf_client_id" class="form-control font-monospace"
-                     value="{{ sf_client_id }}"
-                     placeholder="3MVG9…"/>
-            </div>
-            <div class="mb-0">
-              <label class="form-label small fw-semibold">Consumer Secret <span class="text-muted fw-normal">(optional — Web Server flow only)</span></label>
-              <input type="password" name="sf_client_secret" class="form-control" placeholder="leave blank for PKCE/public app"/>
-            </div>
+            {% endif %}
           </div>
         </div>
 
@@ -126,7 +119,7 @@
         </div>
 
         <button type="submit" class="btn btn-primary fw-semibold px-4" id="submit-btn">
-          <i class="bi bi-play-fill me-1"></i><span id="submit-label">Start Scan</span>
+          <i class="bi bi-play-fill me-1" id="submit-icon"></i><span id="submit-label">Start Scan</span>
         </button>
         <a href="/dashboard" class="btn btn-outline-secondary ms-2">Cancel</a>
 
@@ -140,30 +133,62 @@
 {% block extra_scripts %}
 <script>
 const form = document.getElementById('scan-form');
+const sfAuthEnabled = {{ 'true' if sf_auth_enabled else 'false' }};
 
 function setScanMode(mode) {
-  document.getElementById('auth-fields').style.display  = (mode === 'auth')  ? 'block' : 'none';
-  document.getElementById('oauth-fields').style.display = (mode === 'oauth') ? 'block' : 'none';
+  document.getElementById('auth-fields').style.display = (mode === 'auth') ? 'block' : 'none';
 
-  if (mode === 'oauth') {
+  if (mode === 'auth' && sfAuthEnabled) {
     form.action = '/auth/sf/start';
-    // OAuth flow requires sf_instance_url + sf_client_id — mark required
-    document.getElementById('sf_instance_url').required = true;
-    document.getElementById('sf_client_id').required    = true;
-    document.getElementById('submit-label').textContent = 'Connect to Salesforce & Scan';
+    document.getElementById('submit-icon').className = 'bi bi-box-arrow-up-right me-1';
+    document.getElementById('submit-label').textContent = 'Login & Scan';
   } else {
     form.action = '/scans';
-    document.getElementById('sf_instance_url').required = false;
-    document.getElementById('sf_client_id').required    = false;
+    document.getElementById('submit-icon').className = 'bi bi-play-fill me-1';
     document.getElementById('submit-label').textContent = 'Start Scan';
   }
 }
 
-form.addEventListener('submit', () => {
+function toggleCustomUrl(val) {
+  const customDiv = document.getElementById('custom-url-field');
+  if (val === 'custom') {
+    customDiv.style.display = 'block';
+    // Swap the hidden select value to whatever is in the text input
+    syncCustomUrl(document.getElementById('sf_login_url_custom').value);
+  } else {
+    customDiv.style.display = 'none';
+  }
+}
+
+// Keep the hidden input (the select's value) in sync when user types a custom URL
+function syncCustomUrl(val) {
+  const sel = document.getElementById('sf_login_url');
+  // Add/update a real hidden input carrying the final URL
+  let hidden = document.getElementById('sf_login_url_hidden');
+  if (!hidden) {
+    hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = 'sf_login_url';
+    hidden.id = 'sf_login_url_hidden';
+    form.appendChild(hidden);
+    // Disable the select's name so only one value is submitted
+    sel.removeAttribute('name');
+  }
+  hidden.value = val.trim();
+}
+
+form.addEventListener('submit', (e) => {
+  // If custom domain is selected but empty, block submission
+  const sel = document.getElementById('sf_login_url');
+  if (sel && sel.value === 'custom') {
+    const custom = document.getElementById('sf_login_url_custom').value.trim();
+    if (!custom) { e.preventDefault(); alert('Please enter your custom Salesforce login URL.'); return; }
+  }
+
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
   const mode = document.querySelector('input[name=scan_type]:checked').value;
-  btn.innerHTML = mode === 'oauth'
+  btn.innerHTML = (mode === 'auth' && sfAuthEnabled)
     ? '<span class="spinner-border spinner-border-sm me-2"></span>Redirecting to Salesforce…'
     : '<span class="spinner-border spinner-border-sm me-2"></span>Starting…';
 });
