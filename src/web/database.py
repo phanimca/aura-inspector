@@ -189,18 +189,23 @@ def _run_migrations() -> None:
 	"""Apply additive schema changes to existing tables (safe to run on every startup)."""
 	from sqlalchemy import inspect as sa_inspect, text
 	inspector = sa_inspect(engine)
+	# SQLite uses DATETIME; PostgreSQL uses TIMESTAMP.
+	ts_type = 'DATETIME' if DATABASE_URL.startswith('sqlite') else 'TIMESTAMP'
 	# scan_jobs additions introduced with the parallel-scan / cancel feature
 	if 'scan_jobs' in inspector.get_table_names():
 		existing = {c['name'] for c in inspector.get_columns('scan_jobs')}
-		additions: list[str] = []
+		additions: list[tuple[str, str]] = []
 		if 'progress' not in existing:
-			additions.append("ALTER TABLE scan_jobs ADD COLUMN progress VARCHAR(200) DEFAULT ''")
+			additions.append(('progress', "ALTER TABLE scan_jobs ADD COLUMN progress VARCHAR(200) DEFAULT ''"))
 		if 'cancelled_at' not in existing:
-			additions.append('ALTER TABLE scan_jobs ADD COLUMN cancelled_at DATETIME')
-		if additions:
-			with engine.begin() as conn:
-				for stmt in additions:
-					try:
-						conn.execute(text(stmt))
-					except Exception as exc:  # column already exists in a concurrent startup
-						logger.debug('Migration skipped (%s): %s', stmt[:60], exc)
+			additions.append(('cancelled_at', f'ALTER TABLE scan_jobs ADD COLUMN cancelled_at {ts_type}'))
+		# Each ALTER runs in its own transaction so a failure on one column
+		# does not abort and roll back the other (PostgreSQL aborts the whole
+		# transaction on any error, so sharing one BEGIN block is unsafe).
+		for col_name, stmt in additions:
+			try:
+				with engine.begin() as conn:
+					conn.execute(text(stmt))
+				logger.info('Migration applied: added scan_jobs.%s', col_name)
+			except Exception as exc:  # column already exists in a concurrent startup
+				logger.debug('Migration skipped for scan_jobs.%s: %s', col_name, exc)
