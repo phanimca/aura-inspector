@@ -60,7 +60,7 @@
           <div id="auth-fields" style="display:none;">
             {% if sf_auth_enabled %}
             <div class="mb-3">
-              <label class="form-label small fw-semibold">Salesforce Login URL</label>
+              <label class="form-label small fw-semibold">Connected App Login URL</label>
               <select id="sf_login_url" class="form-control" onchange="toggleCustomUrl(this.value)">
                 <option value="https://login.salesforce.com"{% if sf_login_url == 'https://login.salesforce.com' %} selected{% endif %}>Production — login.salesforce.com</option>
                 <option value="https://test.salesforce.com"{% if sf_login_url == 'https://test.salesforce.com' %} selected{% endif %}>Sandbox — test.salesforce.com</option>
@@ -69,6 +69,12 @@
               <!-- Always-present hidden input that carries the final resolved URL -->
               <input type="hidden" name="sf_login_url" id="sf_login_url_hidden"
                      value="{{ sf_login_url or 'https://login.salesforce.com' }}"/>
+              <div class="form-text" style="color:#8b949e;">
+                Choose the org where your <strong>Connected App</strong> (SF_CLIENT_ID) is registered —
+                this is <em>not</em> necessarily the same org as the Experience Cloud site you are scanning.
+                If your Connected App is in Production, keep this set to Production even when scanning a sandbox URL.
+              </div>
+            </div>
             </div>
             <div id="custom-url-field" class="mb-3" style="display:none;">
               <label class="form-label small fw-semibold">Custom Login URL</label>

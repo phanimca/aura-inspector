@@ -463,8 +463,27 @@ def sf_oauth_callback(
 	authorization code for an access token, derive the session cookie,
 	and launch the authenticated scan."""
 	if error:
-		msg = (error_description or error).replace(' ', '+')
-		return RedirectResponse(f'/scans/new?error=Salesforce+OAuth+error:+{msg}', status_code=302)
+		desc = (error_description or error).strip()
+		# Provide actionable guidance for the most common Salesforce OAuth errors.
+		if 'cross' in desc.lower() and 'org' in desc.lower():
+			msg = (
+				'Cross-org OAuth is not enabled on your External Client App. '
+				'Fix: Setup → Apps → App Manager → [Your App] → Edit → OAuth Policies → '
+				'enable “Allow Cross-Org OAuth Flows”. '
+				'Alternatively, create a traditional Connected App (not External Client App), '
+				'or set the Login URL to the org where your Connected App is registered.'
+			)
+		elif 'redirect_uri' in desc.lower():
+			msg = (
+				'redirect_uri mismatch. '
+				'Add https://phani-aura-inspector.vercel.app/auth/sf/callback '
+				'as a Callback URL in your Connected App (Setup → App Manager → Edit).'
+			)
+		else:
+			msg = desc
+		return RedirectResponse(
+			f"/scans/new?error={msg.replace(' ', '+')}", status_code=302
+		)
 
 	if not code or not state:
 		return RedirectResponse('/scans/new?error=Invalid+OAuth+callback+(missing+code+or+state)', status_code=302)
