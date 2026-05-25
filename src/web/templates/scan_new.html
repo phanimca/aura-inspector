@@ -94,32 +94,38 @@
               <div id="oauth-error" class="alert-danger-custom mb-2" style="display:none;"></div>
 
               {% if sf_auth_enabled %}
-              <!-- Login URL — always visible so sandbox users see it immediately -->
+              <!-- Connected App selector -->
               <div class="mb-3 p-3 rounded" style="background:#161b22;border:1px solid #30363d;">
-                <label class="form-label small fw-semibold mb-1">Salesforce Login URL</label>
-                <select id="sf_login_url" class="form-control form-control-sm" onchange="toggleCustomUrl(this.value)">
-                  <option value="https://login.salesforce.com" selected>Production — login.salesforce.com</option>
-                  <option value="https://test.salesforce.com">Sandbox — test.salesforce.com</option>
-                  <option value="custom">Custom domain (My Domain)…</option>
+                <label class="form-label small fw-semibold mb-1">
+                  <i class="bi bi-plug me-1" style="color:#58a6ff;"></i>Connected App
+                  <span class="text-danger">*</span>
+                </label>
+                <select id="connected-app-select" class="form-control form-control-sm"
+                        onchange="onConnectedAppChange(this.value)">
+                  <option value="">— select a connected app —</option>
+                  {% for ca in connected_apps %}
+                  <option value="{{ ca.id }}" data-login-url="{{ ca.login_url }}">
+                    {{ ca.name }} ({{ ca.login_url | replace('https://', '') | replace('http://', '') }})
+                  </option>
+                  {% endfor %}
                 </select>
-                <input type="hidden" name="sf_login_url" id="sf_login_url_hidden" value="https://login.salesforce.com"/>
-                <div id="custom-url-field" style="display:none;" class="mt-2">
-                  <input type="url" id="sf_login_url_custom" class="form-control form-control-sm"
-                         placeholder="https://myorg.my.salesforce.com" oninput="syncCustomUrl(this.value)"/>
-                </div>
+                <input type="hidden" id="connected_app_id_hidden" value=""/>
                 <div class="form-text mt-1" style="color:#8b949e;font-size:.78rem;">
                   <i class="bi bi-info-circle me-1"></i>
-                  Choose <strong>Sandbox</strong> if your Connected App is registered in a sandbox org
-                  (URL contains <code>--</code> or <code>.sandbox.</code>).
-                  Auto-detected from the Site URL you enter above.
+                  Select the Connected App registered in the <strong>target org you are scanning</strong>.
+                  <a href="/connected-apps" style="color:#58a6ff;" target="_blank">Manage Connected Apps</a>
                 </div>
               </div>
               {% else %}
               <div class="card p-3 mb-2" style="background:#0d1117;border-color:#f8514933;">
                 <p class="mb-0 small" style="color:#f85149;">
                   <i class="bi bi-exclamation-triangle me-1"></i>
-                  OAuth login is not available — <code>SF_CLIENT_ID</code> is not configured on this server.
-                  Use the <strong>Paste Session Cookie</strong> option instead, or ask the site admin to configure the Connected App.
+                  No Connected Apps configured — OAuth login is unavailable.
+                  Use <strong>Paste Session Cookie</strong> instead, or
+                  <a href="/connected-apps" style="color:#58a6ff;">add a Connected App</a>
+                  (must be created inside the target Salesforce org).
+                  Note: as of Spring '26, only External Client Apps can be newly created in Salesforce —
+                  these are org-scoped and must exist in the org you are scanning.
                 </p>
               </div>
               {% endif %}
@@ -128,7 +134,27 @@
             <!-- Cookie sub-section -->
             <div id="cookie-section" style="display:none;">
               <div class="mb-2">
-                <label class="form-label small fw-semibold">Session Cookie <span class="text-danger">*</span></label>
+                <!-- Success banner shown after OAuth popup captures the session -->
+                <div id="sf-session-captured" style="display:none;" class="mb-2 p-2 rounded d-flex align-items-center gap-2"
+                     style="background:#3fb95011;border:1px solid #3fb95033;">
+                  <i class="bi bi-check-circle-fill" style="color:#3fb950;"></i>
+                  <span class="small" style="color:#3fb950;">
+                    Session captured from Salesforce login — review below and click <strong>Start Scan</strong>.
+                  </span>
+                  <button type="button" class="btn btn-link btn-sm ms-auto p-0" style="color:#8b949e;font-size:.75rem;"
+                          onclick="clearSfSession()">Clear</button>
+                </div>
+                <div class="d-flex align-items-center justify-content-between mb-1">
+                  <label class="form-label small fw-semibold mb-0">Session Cookie <span class="text-danger">*</span></label>
+                  {% if sf_auth_enabled %}
+                  <button type="button" id="refresh-session-btn"
+                          class="btn btn-sm"
+                          style="font-size:.78rem;color:#58a6ff;padding:.15rem .55rem;border:1px solid #58a6ff44;background:transparent;border-radius:6px;"
+                          onclick="refreshSfSession()">
+                    <i class="bi bi-arrow-clockwise me-1" id="refresh-icon"></i>Refresh via Salesforce
+                  </button>
+                  {% endif %}
+                </div>
                 <textarea name="cookies" id="cookies-input" class="form-control" rows="3"
                           placeholder="sid=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX; other_cookie=value"
                           style="font-family:monospace;font-size:.82rem;"></textarea>
@@ -253,36 +279,47 @@ function _applyMode() {
   }
 }
 
-function toggleCustomUrl(val) {
-  const customDiv = document.getElementById('custom-url-field');
-  const hidden    = document.getElementById('sf_login_url_hidden');
-  if (val === 'custom') {
-    customDiv.style.display = 'block';
-    hidden.value = document.getElementById('sf_login_url_custom').value.trim();
-  } else {
-    customDiv.style.display = 'none';
-    hidden.value = val;
+function onConnectedAppChange(val) {
+  document.getElementById('connected_app_id_hidden').value = val;
+  const errDiv = document.getElementById('oauth-error');
+  if (errDiv && val) errDiv.style.display = 'none';
+}
+
+function clearSfSession() {
+  document.getElementById('cookies-input').value = '';
+  const banner = document.getElementById('sf-session-captured');
+  if (banner) banner.style.display = 'none';
+}
+
+function refreshSfSession() {
+  // Re-open the Salesforce OAuth popup to get a fresh session cookie.
+  const refreshBtn = document.getElementById('refresh-session-btn');
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    document.getElementById('refresh-icon').className = 'spinner-border spinner-border-sm me-1';
   }
+  // Temporarily restore submit button label during popup wait.
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Waiting for Salesforce login…';
+
+  // Hide previous captured banner.
+  const banner = document.getElementById('sf-session-captured');
+  if (banner) banner.style.display = 'none';
+
+  // Open popup (reuses the same _openSfPopup logic but resets the refresh
+  // button when the popup closes or when the message arrives).
+  _openSfPopup({ onDone: function() {
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      document.getElementById('refresh-icon').className = 'bi bi-arrow-clockwise me-1';
+    }
+  }});
 }
 
-function syncCustomUrl(val) {
-  document.getElementById('sf_login_url_hidden').value = val.trim();
-}
-
-// Auto-detect Production vs Sandbox from the site URL.
-// Sandbox indicators: '--' in host (org--sandbox.my.site.com)
-// or '.sandbox.' in host (org.sandbox.my.site.com)
-function autoDetectLoginUrl(siteUrl) {
-  const sel = document.getElementById('sf_login_url');
-  if (!sel || sel.value === 'custom') return; // user chose custom — don't override
-  try {
-    const host = new URL(siteUrl.trim()).hostname.toLowerCase();
-    const isSandbox = host.includes('--') || host.includes('.sandbox.');
-    const target = isSandbox ? 'https://test.salesforce.com' : 'https://login.salesforce.com';
-    sel.value = target;
-    document.getElementById('sf_login_url_hidden').value = target;
-  } catch (_) { /* invalid URL while typing — ignore */ }
-}
+// Auto-detect is no longer needed (connected app already knows its login URL).
+// Kept as a stub so any lingering oninput references don't throw.
+function autoDetectLoginUrl(_siteUrl) {}
 
 // -----------------------------------------------------------------------
 // Popup OAuth flow
@@ -298,14 +335,29 @@ window.addEventListener('message', function (event) {
   const btn = document.getElementById('submit-btn');
 
   if (data.type === 'sf_session') {
-    // Received session cookie from popup — fill form and submit to /scans.
-    document.getElementById('cookies-input').value = data.cookies || '';
-    // Make sure scan_type=auth reaches the server.
-    const authRadio = document.getElementById('type-auth');
-    if (authRadio) authRadio.checked = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting scan…';
-    form.action = '/scans';
-    form.submit();
+    // Fill cookies textarea with the session captured from the popup.
+    const cookieInput = document.getElementById('cookies-input');
+    cookieInput.value = data.cookies || '';
+
+    // Switch auth method radio to 'cookie' so the form submits to /scans.
+    const cookieRadio = document.getElementById('method-cookie');
+    if (cookieRadio) cookieRadio.checked = true;
+    _scanMode = 'cookie';
+    _applyMode();
+
+    // Show the success banner above the textarea.
+    const banner = document.getElementById('sf-session-captured');
+    if (banner) banner.style.display = 'flex';
+
+    // Re-enable button as "Start Scan" so user can review before submitting.
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Start Scan';
+
+    // Scroll the cookie section into view.
+    cookieInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Fire the onDone callback (e.g. reset the Refresh button spinner).
+    if (_popupOnDone) { _popupOnDone(); _popupOnDone = null; }
 
   } else if (data.type === 'sf_error') {
     btn.disabled = false;
@@ -318,26 +370,37 @@ window.addEventListener('message', function (event) {
   }
 });
 
-function _openSfPopup() {
+let _popupOnDone = null;   // optional callback fired when popup flow finishes
+
+function _openSfPopup(opts) {
+  _popupOnDone = (opts && opts.onDone) || null;
+
   const targetUrl = form.querySelector('[name=target_url]').value.trim();
   if (!targetUrl) {
     alert('Please enter the target site URL first.');
+    if (_popupOnDone) _popupOnDone();
     return;
   }
 
-  const sfLoginUrl = (document.getElementById('sf_login_url_hidden') || {}).value ||
-                     'https://login.salesforce.com';
+  const connectedAppId = (document.getElementById('connected_app_id_hidden') || {}).value || '';
 
-  // Validate custom domain field if visible.
+  if (!connectedAppId) {
+    const errDiv = document.getElementById('oauth-error');
+    if (errDiv) { errDiv.textContent = 'Please select a Connected App first.'; errDiv.style.display = 'block'; }
+    if (_popupOnDone) _popupOnDone();
+    return;
+  }
+
+  // Validate custom domain field if visible (legacy — no longer shown, kept as guard).
   const sel = document.getElementById('sf_login_url');
   if (sel && sel.value === 'custom') {
-    const custom = document.getElementById('sf_login_url_custom').value.trim();
-    if (!custom) { alert('Please enter your custom Salesforce login URL.'); return; }
+    const custom = document.getElementById('sf_login_url_custom');
+    if (custom && !custom.value.trim()) { alert('Please enter your custom Salesforce login URL.'); if (_popupOnDone) _popupOnDone(); return; }
   }
 
   const params = new URLSearchParams({
-    target_url:   targetUrl,
-    sf_login_url: sfLoginUrl,
+    target_url:       targetUrl,
+    connected_app_id: connectedAppId,
     app_path:     (form.querySelector('[name=app_path]')   || {}).value || '',
     aura_path:    (form.querySelector('[name=aura_path]')  || {}).value || '',
     proxy:        (form.querySelector('[name=proxy]')      || {}).value || '',
@@ -364,6 +427,7 @@ function _openSfPopup() {
   if (!_sfPopup || _sfPopup.closed || typeof _sfPopup.closed === 'undefined') {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-box-arrow-up-right me-1"></i>Login & Scan';
+    if (_popupOnDone) _popupOnDone();
     alert('Popup was blocked. Please allow popups for this site and try again.');
     return;
   }
@@ -376,6 +440,7 @@ function _openSfPopup() {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-box-arrow-up-right me-1"></i>Login & Scan';
       }
+      if (_popupOnDone) { _popupOnDone(); _popupOnDone = null; }
     }
   }, 500);
 }

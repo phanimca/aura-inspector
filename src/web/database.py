@@ -171,6 +171,30 @@ class OAuthState(Base):
 	code_verifier = Column(String(128))                  # PKCE verifier — required when Connected App enforces PKCE
 
 
+class ConnectedApp(Base):
+	"""A Salesforce Connected App / External Client App registered by the admin.
+
+	Each record stores the OAuth credentials needed to initiate an Authorization
+	Code flow for a specific Salesforce org.  The admin creates one record per
+	org / environment they want to scan with OAuth.
+
+	Fields:
+	  name         — human-readable label (e.g. "Acme Production", "Sandbox")
+	  client_id    — Consumer Key from the Connected App definition
+	  client_secret— Consumer Secret (optional for PKCE-only flows)
+	  login_url    — Salesforce OAuth base URL (login.salesforce.com, test.salesforce.com, or custom)
+	  app_base_url — Override for the OAuth redirect_uri base; if blank the global APP_BASE_URL is used
+	"""
+	__tablename__ = 'connected_apps'
+	id = Column(Integer, primary_key=True, index=True)
+	name = Column(String(200), nullable=False)
+	client_id = Column(String(500), nullable=False)
+	client_secret = Column(String(500))
+	login_url = Column(String(500), default='https://login.salesforce.com', nullable=False)
+	app_base_url = Column(String(500))   # e.g. https://myapp.vercel.app — overrides global for redirect_uri
+	created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # FastAPI dependency: yields a DB session and closes it when the request ends
 def get_db():
 	db = SessionLocal()
@@ -220,3 +244,8 @@ def _run_migrations() -> None:
 				logger.info('Migration applied: added oauth_states.code_verifier')
 			except Exception as exc:
 				logger.debug('Migration skipped for oauth_states.code_verifier: %s', exc)
+	# connected_apps — new table; created by create_all, no ALTERs needed yet.
+	# Logged here for observability.
+	if 'connected_apps' in inspector.get_table_names():
+		logger.debug('connected_apps table present')
+

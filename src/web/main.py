@@ -52,7 +52,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from web.auth import COOKIE_NAME, create_token, decode_token, hash_password, verify_password
-from web.database import AiAnalysis, Finding, OAuthState, ScanJob, User, _USING_EPHEMERAL_SQLITE, get_db, init_db
+from web.database import AiAnalysis, ConnectedApp, Finding, OAuthState, ScanJob, User, _USING_EPHEMERAL_SQLITE, get_db, init_db
 from web import scan_runner
 
 # ---------------------------------------------------------------------------
@@ -174,6 +174,24 @@ def _seed_default_admin(db) -> None:
 	db.commit()
 
 
+def _seed_default_connected_app(db) -> None:
+	"""If SF_CLIENT_ID is configured in env and no connected apps exist yet, create one."""
+	if not _SF_CLIENT_ID:
+		return
+	if db.query(ConnectedApp).count() > 0:
+		return
+	app = ConnectedApp(
+		name='Default (from environment)',
+		client_id=_SF_CLIENT_ID,
+		client_secret=_SF_CLIENT_SECRET or None,
+		login_url=_SF_INSTANCE_URL or 'https://login.salesforce.com',
+		app_base_url=None,
+	)
+	db.add(app)
+	db.commit()
+	logger.info('Seeded default ConnectedApp from SF_CLIENT_ID env var')
+
+
 # ---------------------------------------------------------------------------
 # Startup: initialise database tables and seed default admin
 # ---------------------------------------------------------------------------
@@ -191,6 +209,7 @@ def on_startup():
 	db = next(get_db())
 	try:
 		_seed_default_admin(db)
+		_seed_default_connected_app(db)
 	finally:
 		db.close()
 
@@ -319,10 +338,11 @@ def scan_new(request: Request, db: Session = Depends(get_db)):
 	user = _get_user(request, db)
 	if not user:
 		return RedirectResponse('/login', status_code=302)
+	connected_apps = db.query(ConnectedApp).order_by(ConnectedApp.name).all()
 	return templates.TemplateResponse(request, 'scan_new.html', _ctx(
 		user,
-		sf_login_url=_SF_INSTANCE_URL,
-		sf_auth_enabled=bool(_SF_CLIENT_ID),
+		sf_auth_enabled=bool(connected_apps),
+		connected_apps=connected_apps,
 		ai_enabled=_AI_KEY_CONFIGURED,
 		ai_model=_AI_MODEL,
 	))
@@ -375,6 +395,112 @@ def scan_create(
 
 
 # ---------------------------------------------------------------------------
+# Connected Apps management  (admin-only CRUD)
+# ---------------------------------------------------------------------------
+
+@app.get('/connected-apps', response_class=HTMLResponse)
+def connected_apps_list(request: Request, db: Session = Depends(get_db)):
+	user = _get_user(request, db)
+	if not user:
+		return RedirectResponse('/login', status_code=302)
+	if not user.is_admin:
+		return RedirectResponse('/dashboard', status_code=302)
+	apps = db.query(ConnectedApp).order_by(ConnectedApp.name).all()
+	saved = request.query_params.get('saved')
+	error = request.query_params.get('error')
+	return templates.TemplateResponse(request, 'connected_apps.html', _ctx(
+		user, connected_apps=apps, saved=saved, error=error,
+	))
+
+
+@app.post('/connected-apps')
+def connected_apps_create(
+	request: Request,
+	name: str = Form(...),
+	client_id: str = Form(...),
+	client_secret: str = Form(''),
+	login_url: str = Form('https://login.salesforce.com'),
+	login_url_custom: str = Form(''),
+	app_base_url: str = Form(''),
+	db: Session = Depends(get_db),
+):
+	user = _get_user(request, db)
+	if not user or not user.is_admin:
+		return RedirectResponse('/login', status_code=302)
+	resolved_login = login_url_custom.strip() if login_url == 'custom' else login_url.strip()
+	resolved_login = resolved_login.rstrip('/') or 'https://login.salesforce.com'
+	ca = ConnectedApp(
+		name=name.strip(),
+		client_id=client_id.strip(),
+		client_secret=client_secret.strip() or None,
+		login_url=resolved_login,
+		app_base_url=app_base_url.strip().rstrip('/') or None,
+	)
+	db.add(ca)
+	db.commit()
+	return RedirectResponse('/connected-apps?saved=1', status_code=302)
+
+
+@app.post('/connected-apps/{app_id}/edit')
+def connected_apps_edit(
+	request: Request,
+	app_id: int,
+	name: str = Form(...),
+	client_id: str = Form(...),
+	client_secret: str = Form(''),
+	login_url: str = Form('https://login.salesforce.com'),
+	login_url_custom: str = Form(''),
+	app_base_url: str = Form(''),
+	db: Session = Depends(get_db),
+):
+	user = _get_user(request, db)
+	if not user or not user.is_admin:
+		return RedirectResponse('/login', status_code=302)
+	ca = db.query(ConnectedApp).filter(ConnectedApp.id == app_id).first()
+	if not ca:
+		return RedirectResponse('/connected-apps?error=Not+found', status_code=302)
+	resolved_login = login_url_custom.strip() if login_url == 'custom' else login_url.strip()
+	resolved_login = resolved_login.rstrip('/') or 'https://login.salesforce.com'
+	ca.name = name.strip()
+	ca.client_id = client_id.strip()
+	if client_secret.strip():
+		ca.client_secret = client_secret.strip()
+	ca.login_url = resolved_login
+	ca.app_base_url = app_base_url.strip().rstrip('/') or None
+	db.commit()
+	return RedirectResponse('/connected-apps?saved=1', status_code=302)
+
+
+@app.post('/connected-apps/{app_id}/delete')
+def connected_apps_delete(
+	request: Request,
+	app_id: int,
+	db: Session = Depends(get_db),
+):
+	user = _get_user(request, db)
+	if not user or not user.is_admin:
+		return RedirectResponse('/login', status_code=302)
+	ca = db.query(ConnectedApp).filter(ConnectedApp.id == app_id).first()
+	if ca:
+		db.delete(ca)
+		db.commit()
+	return RedirectResponse('/connected-apps', status_code=302)
+
+
+@app.get('/api/connected-apps')
+def connected_apps_api(request: Request, db: Session = Depends(get_db)):
+	"""Return connected apps as JSON for the scan form dropdown."""
+	user = _get_user(request, db)
+	if not user:
+		return JSONResponse({'apps': []})
+	apps = db.query(ConnectedApp).order_by(ConnectedApp.name).all()
+	return JSONResponse({'apps': [
+		{'id': a.id, 'name': a.name, 'login_url': a.login_url}
+		for a in apps
+	]})
+
+
+# ---------------------------------------------------------------------------
 # Salesforce OAuth 2.0 web flow  (for authenticated scans via browser login)
 # ---------------------------------------------------------------------------
 
@@ -408,6 +534,8 @@ def sf_oauth_popup(
 	aura_path: str = Query(''),
 	proxy: str = Query(''),
 	openai_key: str = Query(''),
+	connected_app_id: int = Query(0),
+	# Legacy fallback — used only when no connected_app_id is provided
 	sf_login_url: str = Query('https://login.salesforce.com'),
 	db: Session = Depends(get_db),
 ):
@@ -415,7 +543,6 @@ def sf_oauth_popup(
 	On completion the popup posts the session cookie back to the opener."""
 	user = _get_user(request, db)
 	if not user:
-		# Redirect to login inside the popup; after login Salesforce flow will restart.
 		return RedirectResponse('/login', status_code=302)
 
 	if not target_url.strip():
@@ -425,15 +552,37 @@ def sf_oauth_popup(
 			'window.location.origin);window.close();'
 		)
 
-	if not _SF_CLIENT_ID:
+	# Resolve the connected app credentials to use for this OAuth flow.
+	# Priority: DB record (by connected_app_id) → env vars fallback.
+	ca_client_id: str = ''
+	ca_client_secret: str | None = None
+	ca_login_url: str = sf_login_url.strip().rstrip('/') or 'https://login.salesforce.com'
+	ca_app_base_url: str = APP_BASE_URL
+
+	if connected_app_id:
+		ca = db.query(ConnectedApp).filter(ConnectedApp.id == connected_app_id).first()
+		if ca:
+			ca_client_id = ca.client_id
+			ca_client_secret = ca.client_secret
+			ca_login_url = ca.login_url.rstrip('/')
+			ca_app_base_url = (ca.app_base_url or APP_BASE_URL).rstrip('/')
+		else:
+			return _popup_html(
+				'window.opener&&window.opener.postMessage('
+				'{type:"sf_error",message:"Selected Connected App not found. Please reconfigure."},'
+				'window.location.origin);window.close();'
+			)
+	elif _SF_CLIENT_ID:
+		ca_client_id = _SF_CLIENT_ID
+		ca_client_secret = _SF_CLIENT_SECRET or None
+	else:
 		return _popup_html(
 			'window.opener&&window.opener.postMessage('
-			'{type:"sf_error",message:"SF_CLIENT_ID is not configured on this server."},'
+			'{type:"sf_error",message:"No Connected App configured. Add one in Settings \u2192 Connected Apps."},'
 			'window.location.origin);window.close();'
 		)
 
-	sf_instance_url = sf_login_url.strip().rstrip('/')
-	web_redirect_uri = f'{APP_BASE_URL}/auth/sf/callback'
+	web_redirect_uri = f'{ca_app_base_url}/auth/sf/callback'
 	state_id = str(uuid.uuid4())
 
 	from ui.oauth_handler import SalesforceOAuthHandler, generate_pkce_pair
@@ -451,9 +600,9 @@ def sf_oauth_popup(
 			'openai_base_url': _AI_BASE_URL or None,
 			'popup': True,
 		}),
-		sf_instance_url=sf_instance_url,
-		sf_client_id=_SF_CLIENT_ID,
-		sf_client_secret=_SF_CLIENT_SECRET or None,
+		sf_instance_url=ca_login_url,
+		sf_client_id=ca_client_id,
+		sf_client_secret=ca_client_secret,
 		redirect_uri=web_redirect_uri,
 		code_verifier=code_verifier,
 	)
@@ -461,9 +610,9 @@ def sf_oauth_popup(
 	db.commit()
 
 	handler = SalesforceOAuthHandler(
-		instance_url=sf_instance_url,
-		client_id=_SF_CLIENT_ID,
-		client_secret=_SF_CLIENT_SECRET or None,
+		instance_url=ca_login_url,
+		client_id=ca_client_id,
+		client_secret=ca_client_secret,
 	)
 	auth_url = handler.get_authorization_url(
 		redirect_uri=web_redirect_uri,
@@ -587,19 +736,36 @@ def sf_oauth_callback(
 	if error:
 		desc = (error_description or error).strip()
 		# Provide actionable guidance for the most common Salesforce OAuth errors.
-		if 'cross' in desc.lower() and 'org' in desc.lower():
+		desc_lower = desc.lower()
+		if 'external client app' in desc_lower and any(
+			kw in desc_lower for kw in ('not installed', 'not found', 'not recognized')
+		):
+			# Spring '26: External Client Apps are org-scoped; the app must exist in the target org.
+			msg = (
+				"External client app is not installed in this org. "
+				"As of Spring '26, Salesforce External Client Apps are scoped to the single org where "
+				"they were created and cannot authenticate users in a different org. "
+				"Fix \u2014 choose one: "
+				"(1) EASIEST: use 'Paste Session Cookie' instead \u2014 log in to the target Salesforce org "
+				"in your browser, open DevTools \u2192 Application \u2192 Cookies, copy the sid value, paste it. "
+				"(2) Create a Connected App or External Client App inside the TARGET org "
+				"(Setup \u2192 App Manager \u2192 New Connected App), then update SF_CLIENT_ID / SF_CLIENT_SECRET. "
+				"(3) If using a pre-Spring '26 Connected App, set the Login URL to the org "
+				"where that Connected App was originally registered."
+			)
+		elif 'cross' in desc_lower and 'org' in desc_lower:
 			msg = (
 				'Cross-org OAuth is not enabled on your External Client App. '
-				'Fix: Setup → Apps → App Manager → [Your App] → Edit → OAuth Policies → '
-				'enable “Allow Cross-Org OAuth Flows”. '
-				'Alternatively, create a traditional Connected App (not External Client App), '
-				'or set the Login URL to the org where your Connected App is registered.'
+				'Fix: Setup \u2192 Apps \u2192 App Manager \u2192 [Your App] \u2192 Edit \u2192 OAuth Policies \u2192 '
+				'enable "Allow Cross-Org OAuth Flows". '
+				'Alternatively, create a Connected App in the target org, '
+				'or set the Login URL to the org where your Connected App was registered.'
 			)
-		elif 'redirect_uri' in desc.lower():
+		elif 'redirect_uri' in desc_lower:
 			msg = (
 				'redirect_uri mismatch. '
 				'Add https://phani-aura-inspector.vercel.app/auth/sf/callback '
-				'as a Callback URL in your Connected App (Setup → App Manager → Edit).'
+				'as a Callback URL in your Connected App (Setup \u2192 App Manager \u2192 Edit).'
 			)
 		else:
 			msg = desc
