@@ -51,54 +51,99 @@
             <div class="form-check">
               <input class="form-check-input" type="radio" name="scan_type" id="type-auth" value="auth" onchange="setScanMode('auth')"/>
               <label class="form-check-label" for="type-auth">
-                <strong>Authenticated</strong> <span class="text-muted small">(login via Salesforce)</span>
+                <strong>Authenticated</strong> <span class="text-muted small">(as a logged-in community user)</span>
               </label>
             </div>
           </div>
 
-          <!-- Salesforce login (auth mode) -->
+          <!-- Auth options — shown when Authenticated is selected -->
           <div id="auth-fields" style="display:none;">
-            {% if sf_auth_enabled %}
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Connected App Login URL</label>
-              <select id="sf_login_url" class="form-control" onchange="toggleCustomUrl(this.value)">
-                <option value="https://login.salesforce.com"{% if sf_login_url == 'https://login.salesforce.com' %} selected{% endif %}>Production — login.salesforce.com</option>
-                <option value="https://test.salesforce.com"{% if sf_login_url == 'https://test.salesforce.com' %} selected{% endif %}>Sandbox — test.salesforce.com</option>
-                <option value="custom">Custom domain (My Domain)…</option>
-              </select>
-              <!-- Always-present hidden input that carries the final resolved URL -->
-              <input type="hidden" name="sf_login_url" id="sf_login_url_hidden"
-                     value="{{ sf_login_url or 'https://login.salesforce.com' }}"/>
-              <div class="form-text" style="color:#8b949e;">
-                Choose the org where your <strong>Connected App</strong> (SF_CLIENT_ID) is registered —
-                this is <em>not</em> necessarily the same org as the Experience Cloud site you are scanning.
-                If your Connected App is in Production, keep this set to Production even when scanning a sandbox URL.
+
+            <!-- Auth method selector -->
+            <div class="mb-3 d-flex gap-3 flex-wrap p-3 rounded" style="background:#0d1117;border:1px solid #30363d;">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="auth_method" id="method-oauth" value="oauth" checked onchange="setAuthMethod('oauth')"/>
+                <label class="form-check-label" for="method-oauth">
+                  <i class="bi bi-box-arrow-up-right me-1" style="color:#58a6ff;"></i>
+                  <strong>Login via Salesforce</strong>
+                  <div class="text-muted small">Redirect to Salesforce login — session cookie captured automatically</div>
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="auth_method" id="method-cookie" value="cookie" onchange="setAuthMethod('cookie')"/>
+                <label class="form-check-label" for="method-cookie">
+                  <i class="bi bi-key me-1" style="color:#d2a679;"></i>
+                  <strong>Paste Session Cookie</strong>
+                  <div class="text-muted small">Provide your own <code>sid=…</code> cookie from browser DevTools</div>
+                </label>
               </div>
             </div>
+
+            <!-- OAuth sub-section -->
+            <div id="oauth-section">
+              <div class="card p-3 mb-3" style="background:#0d1117;border-color:#58a6ff33;">
+                <p class="mb-0 small" style="color:#8b949e;">
+                  <i class="bi bi-info-circle me-1" style="color:#58a6ff;"></i>
+                  Clicking <strong>Login &amp; Scan</strong> opens the Salesforce login page in the same tab.
+                  After you log in, the scan starts automatically — no credentials are stored in this app.
+                </p>
+              </div>
+
+              {% if sf_auth_enabled %}
+              <!-- Connected App settings (optional, collapsed) -->
+              <details id="connected-app-details" class="mb-2">
+                <summary class="fw-semibold small" style="cursor:pointer;color:#8b949e;padding:.4rem 0;">
+                  <i class="bi bi-gear me-1"></i>Connected App Settings <span class="fw-normal">(optional — uses server default if not set)</span>
+                </summary>
+                <div class="mt-3 p-3 rounded" style="background:#161b22;border:1px solid #30363d;">
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold">Login URL</label>
+                    <select id="sf_login_url" class="form-control form-control-sm" onchange="toggleCustomUrl(this.value)">
+                      <option value="https://login.salesforce.com" selected>Production — login.salesforce.com</option>
+                      <option value="https://test.salesforce.com">Sandbox — test.salesforce.com</option>
+                      <option value="custom">Custom domain (My Domain)…</option>
+                    </select>
+                    <input type="hidden" name="sf_login_url" id="sf_login_url_hidden" value="https://login.salesforce.com"/>
+                    <div class="form-text" style="color:#8b949e;font-size:.78rem;">
+                      The org where your Connected App (Consumer Key) is registered.
+                      Keep set to <em>Production</em> even when scanning a sandbox Experience Cloud site
+                      unless your Connected App lives in the sandbox.
+                    </div>
+                  </div>
+                  <div id="custom-url-field" class="mb-2" style="display:none;">
+                    <label class="form-label small fw-semibold">Custom Login URL</label>
+                    <input type="url" id="sf_login_url_custom" class="form-control form-control-sm"
+                           placeholder="https://myorg.my.salesforce.com" oninput="syncCustomUrl(this.value)"/>
+                  </div>
+                </div>
+              </details>
+              {% else %}
+              <div class="card p-3 mb-2" style="background:#0d1117;border-color:#f8514933;">
+                <p class="mb-0 small" style="color:#f85149;">
+                  <i class="bi bi-exclamation-triangle me-1"></i>
+                  OAuth login is not available — <code>SF_CLIENT_ID</code> is not configured on this server.
+                  Use the <strong>Paste Session Cookie</strong> option instead, or ask the site admin to configure the Connected App.
+                </p>
+              </div>
+              {% endif %}
             </div>
-            <div id="custom-url-field" class="mb-3" style="display:none;">
-              <label class="form-label small fw-semibold">Custom Login URL</label>
-              <input type="url" id="sf_login_url_custom" class="form-control" placeholder="https://myorg.my.salesforce.com"
-                     oninput="syncCustomUrl(this.value)"/>
-              <div class="form-text" style="color:#8b949e;">Enter your My Domain login URL (e.g. <code>https://mycompany.my.salesforce.com</code>).</div>
+
+            <!-- Cookie sub-section -->
+            <div id="cookie-section" style="display:none;">
+              <div class="mb-2">
+                <label class="form-label small fw-semibold">Session Cookie <span class="text-danger">*</span></label>
+                <textarea name="cookies" id="cookies-input" class="form-control" rows="3"
+                          placeholder="sid=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX; other_cookie=value"
+                          style="font-family:monospace;font-size:.82rem;"></textarea>
+                <div class="form-text" style="color:#8b949e;">
+                  Paste the cookie string from your browser.
+                  In Chrome DevTools → Application → Cookies → copy <code>sid</code> (and any other relevant cookies).
+                  Format: <code>sid=value; name2=value2</code>
+                </div>
+              </div>
             </div>
-            <div class="card p-3" style="background:#0d1117;border-color:#58a6ff33;">
-              <p class="mb-0 small" style="color:#8b949e;">
-                <i class="bi bi-box-arrow-up-right me-1" style="color:#58a6ff;"></i>
-                Clicking <strong>Login &amp; Scan</strong> will open the Salesforce login page.
-                Enter your Salesforce username and password there — no credentials are stored in this app.
-              </p>
-            </div>
-            {% else %}
-            <div class="card p-3" style="background:#0d1117;border-color:#f8514933;">
-              <p class="mb-0 small" style="color:#f85149;">
-                <i class="bi bi-exclamation-triangle me-1"></i>
-                Authenticated scans are not available — the server is not configured with Salesforce OAuth credentials.
-                Contact the site admin to set the <code>SF_CLIENT_ID</code> environment variable.
-              </p>
-            </div>
-            {% endif %}
-          </div>
+
+          </div><!-- /auth-fields -->
         </div>
 
         <!-- Advanced options (collapsed by default) -->
@@ -163,54 +208,94 @@
 const form = document.getElementById('scan-form');
 const sfAuthEnabled = form.dataset.sfAuthEnabled === 'true';
 
-function setScanMode(mode) {
-  document.getElementById('auth-fields').style.display = (mode === 'auth') ? 'block' : 'none';
+// Current resolved auth mode: 'guest' | 'oauth' | 'cookie'
+let _scanMode = 'guest';
 
-  if (mode === 'auth' && sfAuthEnabled) {
-    form.action = '/auth/sf/start';
-    document.getElementById('submit-icon').className = 'bi bi-box-arrow-up-right me-1';
-    document.getElementById('submit-label').textContent = 'Login & Scan';
+function setScanMode(scanType) {
+  const authFields = document.getElementById('auth-fields');
+  authFields.style.display = (scanType === 'auth') ? 'block' : 'none';
+  if (scanType === 'guest') {
+    _scanMode = 'guest';
   } else {
+    // Default to whichever auth method radio is checked
+    const methodRadio = document.querySelector('input[name=auth_method]:checked');
+    _scanMode = methodRadio ? methodRadio.value : 'oauth';
+  }
+  _applyMode();
+}
+
+function setAuthMethod(method) {
+  _scanMode = method;
+  _applyMode();
+}
+
+function _applyMode() {
+  const oauthSection  = document.getElementById('oauth-section');
+  const cookieSection = document.getElementById('cookie-section');
+
+  if (_scanMode === 'oauth') {
+    oauthSection.style.display  = 'block';
+    cookieSection.style.display = 'none';
+    form.action = sfAuthEnabled ? '/auth/sf/start' : '/scans';
+    document.getElementById('submit-icon').className  = sfAuthEnabled ? 'bi bi-box-arrow-up-right me-1' : 'bi bi-play-fill me-1';
+    document.getElementById('submit-label').textContent = sfAuthEnabled ? 'Login & Scan' : 'Start Scan';
+  } else if (_scanMode === 'cookie') {
+    oauthSection.style.display  = 'none';
+    cookieSection.style.display = 'block';
     form.action = '/scans';
-    document.getElementById('submit-icon').className = 'bi bi-play-fill me-1';
+    document.getElementById('submit-icon').className  = 'bi bi-play-fill me-1';
+    document.getElementById('submit-label').textContent = 'Start Scan';
+  } else {
+    // guest
+    oauthSection.style.display  = 'none';
+    cookieSection.style.display = 'none';
+    form.action = '/scans';
+    document.getElementById('submit-icon').className  = 'bi bi-play-fill me-1';
     document.getElementById('submit-label').textContent = 'Start Scan';
   }
 }
 
 function toggleCustomUrl(val) {
   const customDiv = document.getElementById('custom-url-field');
-  const hidden = document.getElementById('sf_login_url_hidden');
+  const hidden    = document.getElementById('sf_login_url_hidden');
   if (val === 'custom') {
     customDiv.style.display = 'block';
-    // Sync hidden input to whatever is already typed in the custom field
-    const customVal = document.getElementById('sf_login_url_custom').value.trim();
-    hidden.value = customVal;
+    hidden.value = document.getElementById('sf_login_url_custom').value.trim();
   } else {
     customDiv.style.display = 'none';
-    // val is the actual URL (production or sandbox) — use it directly
     hidden.value = val;
   }
 }
 
-// Keep the hidden input in sync as the user types a custom URL
 function syncCustomUrl(val) {
   document.getElementById('sf_login_url_hidden').value = val.trim();
 }
 
 form.addEventListener('submit', (e) => {
-  // If custom domain is selected but empty, block submission
-  const sel = document.getElementById('sf_login_url');
-  if (sel && sel.value === 'custom') {
-    const custom = document.getElementById('sf_login_url_custom').value.trim();
-    if (!custom) { e.preventDefault(); alert('Please enter your custom Salesforce login URL.'); return; }
+  // Validate cookie field when cookie auth is selected
+  if (_scanMode === 'cookie') {
+    const cookieVal = document.getElementById('cookies-input').value.trim();
+    if (!cookieVal) {
+      e.preventDefault();
+      alert('Please paste your Salesforce session cookie (sid=…) to use cookie-based authentication.');
+      return;
+    }
+  }
+
+  // Validate custom domain field
+  if (_scanMode === 'oauth') {
+    const sel = document.getElementById('sf_login_url');
+    if (sel && sel.value === 'custom') {
+      const custom = document.getElementById('sf_login_url_custom').value.trim();
+      if (!custom) { e.preventDefault(); alert('Please enter your custom Salesforce login URL.'); return; }
+    }
   }
 
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
-  const mode = document.querySelector('input[name=scan_type]:checked').value;
-  btn.innerHTML = (mode === 'auth' && sfAuthEnabled)
+  btn.innerHTML = (_scanMode === 'oauth' && sfAuthEnabled)
     ? '<span class="spinner-border spinner-border-sm me-2"></span>Redirecting to Salesforce…'
-    : '<span class="spinner-border spinner-border-sm me-2"></span>Starting…';
+    : '<span class="spinner-border spinner-border-sm me-2"></span>Starting scan…';
 });
 </script>
 {% endblock %}
