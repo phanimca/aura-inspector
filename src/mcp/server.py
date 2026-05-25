@@ -458,7 +458,8 @@ def owasp_references() -> str:
 # Entry point
 # ═════════════════════════════════════════════════════════════════════════════
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console-script entry point for ``aura-inspector-mcp``."""
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport == "sse":
         host = os.environ.get("MCP_HOST", "0.0.0.0")
@@ -468,3 +469,7 @@ if __name__ == "__main__":
     else:
         _slog.info("Starting aura-inspector-mcp stdio server")
         mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()

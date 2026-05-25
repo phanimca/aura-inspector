@@ -23,6 +23,7 @@ recorded as a scan failure.
 
 import os
 import sys
+import logging
 import threading
 import traceback
 from datetime import datetime
@@ -31,6 +32,16 @@ from datetime import datetime
 _SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SRC_DIR not in sys.path:
 	sys.path.insert(0, _SRC_DIR)
+
+# Register the VERBOSE custom log level used throughout aura_helper.py.
+# aura_cli.py does this at CLI startup; the web runner must do it here.
+def _register_verbose_level() -> None:
+	if hasattr(logging, 'VERBOSE'):
+		return
+	from colored_logger import add_logging_level  # noqa: PLC0415
+	add_logging_level('VERBOSE', 15)
+
+_register_verbose_level()
 
 
 def _execute(scan_id: int, config: dict) -> None:

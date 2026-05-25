@@ -14,15 +14,237 @@
 
 
 from aura_helper import AuraHelper
-from datetime import date
+from datetime import date, datetime
 from colored_logger import init_logger,logger,add_logging_level
 import logging
 import sys
+import os
 import argparse
 import json
-import os
 import signal
+import secrets
 from urllib.parse import parse_qs
+
+# ---------------------------------------------------------------------------
+# Database integration — CLI scan results persisted to web DB (SQLite)
+# ---------------------------------------------------------------------------
+
+def _db_session():
+	"""Return a SQLAlchemy session connected to the shared web database."""
+	_src = os.path.dirname(os.path.abspath(__file__))
+	if _src not in sys.path:
+		sys.path.insert(0, _src)
+	from web.database import SessionLocal, init_db  # noqa: PLC0415
+	init_db()
+	return SessionLocal()
+
+
+def _db_get_or_create_user(username: str):
+	"""
+	Return the DB User for *username*.
+	If no matching user exists, create a locked CLI-only account and log the fact.
+	Returns (user_id, created: bool).
+	"""
+	from web.database import User  # noqa: PLC0415
+	from web.auth import hash_password  # noqa: PLC0415
+
+	db = _db_session()
+	try:
+		user = db.query(User).filter(User.username == username).first()
+		if user:
+			logger.info(f"[DB] Using existing user '{username}' (id={user.id})")
+			return user.id, False
+
+		# New user — generate a locked random password (CLI users log in via web)
+		email = f'{username}@cli.local'
+		locked_pw = secrets.token_hex(24)
+		user = User(
+			username=username,
+			email=email,
+			hashed_password=hash_password(locked_pw),
+			is_admin=False,
+		)
+		db.add(user)
+		db.commit()
+		db.refresh(user)
+		logger.info(f"[DB] Created new CLI user '{username}' (id={user.id}, email={email})")
+		return user.id, True
+	finally:
+		db.close()
+
+
+def _db_create_scan_job(user_id: int, url: str, scan_type: str,
+                        app_path: str | None, aura_path: str | None,
+                        proxy: str | None) -> int:
+	"""Insert a ScanJob row with status='running' and return its id."""
+	from web.database import ScanJob  # noqa: PLC0415
+
+	db = _db_session()
+	try:
+		job = ScanJob(
+			user_id=user_id,
+			target_url=url,
+			scan_type=scan_type,
+			app_path=app_path,
+			aura_path=aura_path,
+			proxy=proxy,
+			status='running',
+		)
+		db.add(job)
+		db.commit()
+		db.refresh(job)
+		logger.info(f"[DB] Scan job created (id={job.id})")
+		return job.id
+	finally:
+		db.close()
+
+
+# Severity heuristics — objects that warrant elevated risk ratings
+_HIGH_SEVERITY_OBJECTS  = {'User', 'ContentDocument', 'ContentVersion', 'Contact', 'Lead', 'Account', 'Case'}
+_MEDIUM_SEVERITY_OBJECTS = {'ContentWorkspace', 'EntityDefinition', 'Profile', 'RecordType',
+                             'LiveChatButton', 'Calendar', 'Event', 'StaticResource', 'ProcessDefinition'}
+
+
+def _object_severity(obj_name: str, record_count: int) -> str:
+	if obj_name in _HIGH_SEVERITY_OBJECTS:
+		return 'high'
+	if obj_name in _MEDIUM_SEVERITY_OBJECTS or record_count > 500:
+		return 'medium'
+	if record_count > 0:
+		return 'low'
+	return 'info'
+
+
+def _db_persist_results(scan_job_id: int, scan_data: dict, aura) -> None:
+	"""
+	Convert raw CLI scan_data into Finding rows and mark the ScanJob completed.
+	"""
+	from web.database import Finding, ScanJob  # noqa: PLC0415
+
+	all_records     = scan_data.get('all_records', {})
+	all_records_gql = scan_data.get('all_records_gql', {})
+	recordlists     = scan_data.get('recordlists', [])
+	custom_ctrl     = scan_data.get('custom_controllers', [])
+
+	db = _db_session()
+	try:
+		findings = []
+
+		# Standard Aura API exposed objects
+		for obj_name, info in all_records.items():
+			count = info.get('total_count', 0) if isinstance(info, dict) else 0
+			sev   = _object_severity(obj_name, count)
+			findings.append(Finding(
+				scan_job_id  = scan_job_id,
+				scanner      = 'IDORScanner',
+				title        = f'Guest-accessible Salesforce object: {obj_name}',
+				severity     = sev,
+				description  = (
+					f'The Salesforce object "{obj_name}" is accessible via the Aura API '
+					f'without authentication. {count} record(s) were retrieved.'
+				),
+				evidence     = f'Object: {obj_name}, Records: {count}',
+				remediation  = (
+					f'Remove Read access for "{obj_name}" from the Experience Cloud '
+					f'Guest User Profile. Review field-level security and sharing rules.'
+				),
+				owasp_ref    = 'API1:2023',
+				affected_objects = [obj_name],
+			))
+
+		# GraphQL-only exposed objects
+		gql_only = {k: v for k, v in all_records_gql.items() if k not in all_records}
+		for obj_name, info in gql_only.items():
+			count = info.get('total_count', 0) if isinstance(info, dict) else 0
+			sev   = _object_severity(obj_name, count)
+			findings.append(Finding(
+				scan_job_id  = scan_job_id,
+				scanner      = 'AuraFuzzer',
+				title        = f'GraphQL uiapi exposure: {obj_name}',
+				severity     = sev,
+				description  = (
+					f'"{obj_name}" is readable via GraphQL (uiapi) by unauthenticated guests. '
+					f'{count} record(s) accessible.'
+				),
+				evidence     = f'GraphQL Object: {obj_name}, Records: {count}',
+				remediation  = (
+					f'Remove Read access for "{obj_name}" from the Guest User Profile '
+					f'or disable Lightning Data Service for guest users.'
+				),
+				owasp_ref    = 'API5:2023',
+				affected_objects = [obj_name],
+			))
+
+		# Exposed record-list URLs
+		for url in recordlists:
+			findings.append(Finding(
+				scan_job_id  = scan_job_id,
+				scanner      = 'AuraFuzzer',
+				title        = 'Exposed UI record list URL accessible to guests',
+				severity     = 'low',
+				description  = 'A browseable record list URL was discovered that may render records for unauthenticated users.',
+				evidence     = url,
+				remediation  = 'Restrict the list view or remove the public page. Verify in an incognito window.',
+				owasp_ref    = 'API1:2023',
+				affected_objects = [],
+			))
+
+		# Custom Apex controllers
+		for ctrl in custom_ctrl:
+			findings.append(Finding(
+				scan_job_id  = scan_job_id,
+				scanner      = 'ApexScanner',
+				title        = f'Custom Apex controller accessible: {ctrl}',
+				severity     = 'high',
+				description  = f'Custom Apex controller "{ctrl}" is accessible via the Aura API.',
+				evidence     = f'Controller: {ctrl}',
+				remediation  = 'Audit controller for system-mode execution and data exposure. Apply with sharing.',
+				owasp_ref    = 'API5:2023',
+				affected_objects = [ctrl],
+			))
+
+		# SOAP API enabled finding
+		if getattr(aura, 'soap_enabled', False):
+			findings.append(Finding(
+				scan_job_id  = scan_job_id,
+				scanner      = 'AuraFuzzer',
+				title        = 'SOAP API is enabled',
+				severity     = 'medium',
+				description  = 'The Salesforce SOAP API endpoint is reachable. This enables credential-based brute-force attacks.',
+				evidence     = f'{aura.url}/services/Soap/',
+				remediation  = 'Disable SOAP API for guest contexts or restrict via IP allowlist.',
+				owasp_ref    = 'API8:2023',
+				affected_objects = [],
+			))
+
+		db.add_all(findings)
+
+		# Calculate risk score: weighted by severity
+		weights = {'high': 25, 'medium': 10, 'low': 3, 'info': 0}
+		risk = min(100, sum(weights.get(f.severity, 0) for f in findings))
+
+		job = db.query(ScanJob).filter(ScanJob.id == scan_job_id).first()
+		if job:
+			job.status       = 'completed'
+			job.risk_score   = risk
+			job.completed_at = datetime.utcnow()
+
+		db.commit()
+		logger.info(f"[DB] Persisted {len(findings)} finding(s) for scan job {scan_job_id} (risk={risk})")
+
+	except Exception:
+		db.rollback()
+		logger.error('[DB] Failed to persist scan results', exc_info=True)
+		try:
+			job = db.query(ScanJob).filter(ScanJob.id == scan_job_id).first()
+			if job:
+				job.status = 'failed'
+				db.commit()
+		except Exception:
+			pass
+	finally:
+		db.close()
+
 
 def is_authenticated_scan(cookies=None, context=None, token="null"):
 	return cookies is not None or context is not None or token not in [None, '', 'null']
@@ -142,6 +364,7 @@ def save_audit_data(scan_data, output_dir):
 def audit(url, cookies, object_list, output_dir, proxy, fetch_max_data=False, insecure=False, app=None, aura_path="/aura", context=None, token="null", no_gql=False, authenticated_mode=False, allow_save_prompt=True, scan_name='default'):
 
 	scan_data = collect_audit_data(url=url, cookies=cookies, object_list=object_list, proxy=proxy, fetch_max_data=fetch_max_data, insecure=insecure, app=app, aura_path=aura_path, context=context, token=token, no_gql=no_gql)
+	aura = scan_data['aura']
 	all_records = scan_data['all_records']
 	all_records_gql = scan_data['all_records_gql']
 	
@@ -173,7 +396,8 @@ def audit(url, cookies, object_list, output_dir, proxy, fetch_max_data=False, in
 	if output_dir:
 		save_audit_data(scan_data, output_dir)
 
-	return summarize_scan(scan_name, scan_data['all_objects'], all_records, all_records_gql)
+	summary = summarize_scan(scan_name, scan_data['all_objects'], all_records, all_records_gql)
+	return {**summary, 'scan_data': scan_data}
 
 
 def write_records_to_directory(all_records, parent_dir, sub_dir):
@@ -376,6 +600,7 @@ def parse_http_request_file(http_req_file):
 def main():
 
 	parser = argparse.ArgumentParser(prog="python3 aura_cli.py")
+	parser.add_argument("-U", "--username", help="Username to associate this scan with (looked up or created in the web DB)", required=True)
 	parser.add_argument("-u", "--url", help="Root URL of Salesforce application to audit")
 	parser.add_argument("-c", "--cookies", help="Cookies after authenticating to Salesforce application", default=None)
 	parser.add_argument("-o", "--output-dir", help="Output directory", default=None)
@@ -475,7 +700,23 @@ def main():
 		run_compare_mode(args, object_list, url, app)
 		return
 
-	audit(url, cookies=cookies,
+	# ── DB: resolve user ──────────────────────────────────────────────────
+	user_id, created = _db_get_or_create_user(args.username)
+	if created:
+		logger.warning(f"[DB] New CLI user '{args.username}' registered. Log in at http://localhost:8080 to view scan history.")
+
+	scan_type = 'auth' if authenticated_mode else 'guest'
+	scan_job_id = _db_create_scan_job(
+		user_id   = user_id,
+		url       = url,
+		scan_type = scan_type,
+		app_path  = app,
+		aura_path = aura,
+		proxy     = args.proxy,
+	)
+
+	# ── Run scan ──────────────────────────────────────────────────────────
+	result = audit(url, cookies=cookies,
 		object_list=object_list,
 		output_dir=args.output_dir,
 		proxy=args.proxy,
@@ -485,8 +726,16 @@ def main():
 		context=context,
 		token=token,
 		no_gql=args.no_gql,
-		authenticated_mode=authenticated_mode
-    )
+		authenticated_mode=authenticated_mode,
+	)
+
+	# ── DB: persist results ───────────────────────────────────────────────
+	if result is not None:
+		raw = result.get('scan_data')
+		if raw:
+			_db_persist_results(scan_job_id, raw, raw.get('aura'))
+			logger.info(f"[DB] Scan results saved — view at http://localhost:8080/scans/{scan_job_id}")
+		logger.info(f"[DB] Scan results saved — view at http://localhost:8080/scans/{scan_job_id}")
 
 if __name__ == "__main__":
     main()

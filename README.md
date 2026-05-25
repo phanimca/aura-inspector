@@ -174,40 +174,40 @@ python src/aura_cli.py -h
 ### Guest scan (unauthenticated)
 
 ```bash
-python src/aura_cli.py -u https://yoursite.my.salesforce.com
+python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com
 ```
 
 ### Guest scan — save output, skip GraphQL, ignore TLS errors
 
 ```bash
-python src/aura_cli.py -u https://yoursite.my.salesforce.com -k --no-gql -o ./results
+python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com -k --no-gql -o ./results
 ```
 
 ### Authenticated scan with session cookie
 
 ```bash
-python src/aura_cli.py -u https://yoursite.my.salesforce.com \
+python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com \
   -c "sid=XXXXXXX; other_cookie=..."
 ```
 
 ### Authenticated scan from a captured Aura request file
 
 ```bash
-python src/aura_cli.py -r /path/to/aura_request.txt
+python src/aura_cli.py -U phani -r /path/to/aura_request.txt
 ```
 
 ### Explicit app and aura paths (for custom site prefixes)
 
 ```bash
 # Site hosted at /s with Aura endpoint at /s/sfsites/aura
-python src/aura_cli.py -u https://yoursite.my.salesforce.com \
+python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com \
   --app /s --aura /s/sfsites/aura -k -o ./results
 ```
 
 ### Proxy through Burp Suite
 
 ```bash
-python src/aura_cli.py -u https://yoursite.my.salesforce.com \
+python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com \
   -p http://127.0.0.1:8080 -k
 ```
 
@@ -215,6 +215,7 @@ python src/aura_cli.py -u https://yoursite.my.salesforce.com \
 
 | Flag | Description |
 |---|---|
+| `-U / --username` | **Required.** Username to attribute the scan to. Looked up in the web DB; a new CLI-only account is created automatically if not found |
 | `-u / --url` | Root URL of the Salesforce Experience Cloud site |
 | `-c / --cookies` | Session cookies for authenticated scans |
 | `-r / --aura-request-file` | Path to a captured request file (auto-parses cookies/token) |
@@ -447,7 +448,7 @@ python -m pytest tests/ -v
 
 ```bash
 # Non-interactive guest scan, results saved to ./results
-python src/aura_cli.py -u https://yoursite.my.salesforce.com -k --no-gql -o ./results
+python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com -k --no-gql -o ./results
 ```
 
 ### Web app health check

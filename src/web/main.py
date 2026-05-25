@@ -28,6 +28,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Load .env from repo root before any os.environ reads
+_REPO_ROOT = Path(__file__).parent.parent.parent
+_ENV_FILE = _REPO_ROOT / '.env'
+if _ENV_FILE.exists():
+	try:
+		from dotenv import load_dotenv
+		load_dotenv(_ENV_FILE, override=False)
+	except ImportError:
+		pass  # python-dotenv not installed; rely on shell environment
+
 # Make src/ importable (needed for aura_helper, scanners, ai_agents)
 _SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SRC_DIR not in sys.path:
@@ -78,18 +88,46 @@ def _require_user(request: Request, db: Session) -> User | None:
 	return _get_user(request, db)
 
 
-def _ctx(request: Request, user: User | None = None, **kwargs) -> dict:
-	"""Build a base template context dict."""
-	return {'request': request, 'user': user, **kwargs}
+def _ctx(user: User | None = None, **kwargs) -> dict:
+	"""Build a base template context dict (request is injected by starlette 1.x automatically)."""
+	return {'user': user, **kwargs}
 
 
 # ---------------------------------------------------------------------------
-# Startup: initialise database tables
+# Default admin credentials (overridable via environment variables)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_ADMIN_USERNAME = os.environ.get('DEFAULT_ADMIN_USERNAME', 'phani')
+_DEFAULT_ADMIN_EMAIL    = os.environ.get('DEFAULT_ADMIN_EMAIL', 'phani.dummy@hotmail.com')
+_DEFAULT_ADMIN_PASSWORD = os.environ.get('DEFAULT_ADMIN_PASSWORD', 'Admin@123')
+
+
+def _seed_default_admin(db) -> None:
+	"""Create the default admin account if it does not already exist."""
+	if db.query(User).filter(User.email == _DEFAULT_ADMIN_EMAIL).first():
+		return
+	user = User(
+		username=_DEFAULT_ADMIN_USERNAME,
+		email=_DEFAULT_ADMIN_EMAIL,
+		hashed_password=hash_password(_DEFAULT_ADMIN_PASSWORD),
+		is_admin=True,
+	)
+	db.add(user)
+	db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Startup: initialise database tables and seed default admin
 # ---------------------------------------------------------------------------
 
 @app.on_event('startup')
 def on_startup():
 	init_db()
+	db = next(get_db())
+	try:
+		_seed_default_admin(db)
+	finally:
+		db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -103,8 +141,8 @@ def home(request: Request, db: Session = Depends(get_db)):
 	total_scans = db.query(ScanJob).count()
 	total_findings = db.query(Finding).count()
 	critical_count = db.query(Finding).filter(Finding.severity == 'critical').count()
-	return templates.TemplateResponse('home.html', _ctx(
-		request, user,
+	return templates.TemplateResponse(request, 'home.html', _ctx(
+		user,
 		total_scans=total_scans,
 		total_findings=total_findings,
 		critical_count=critical_count,
@@ -115,7 +153,7 @@ def home(request: Request, db: Session = Depends(get_db)):
 def login_page(request: Request, db: Session = Depends(get_db), error: str = ''):
 	if _get_user(request, db):
 		return RedirectResponse('/dashboard', status_code=302)
-	return templates.TemplateResponse('login.html', _ctx(request, error=error))
+	return templates.TemplateResponse(request, 'login.html', _ctx(error=error))
 
 
 @app.post('/login')
@@ -141,7 +179,7 @@ def login_submit(
 def register_page(request: Request, db: Session = Depends(get_db), error: str = ''):
 	if _get_user(request, db):
 		return RedirectResponse('/dashboard', status_code=302)
-	return templates.TemplateResponse('register.html', _ctx(request, error=error))
+	return templates.TemplateResponse(request, 'register.html', _ctx(error=error))
 
 
 @app.post('/register')
@@ -204,8 +242,8 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 
 	recent_findings = finding_q.order_by(Finding.id.desc()).limit(8).all()
 
-	return templates.TemplateResponse('dashboard.html', _ctx(
-		request, user,
+	return templates.TemplateResponse(request, 'dashboard.html', _ctx(
+		user,
 		recent_scans=recent_scans,
 		recent_findings=recent_findings,
 	))
@@ -216,7 +254,7 @@ def scan_new(request: Request, db: Session = Depends(get_db)):
 	user = _get_user(request, db)
 	if not user:
 		return RedirectResponse('/login', status_code=302)
-	return templates.TemplateResponse('scan_new.html', _ctx(request, user))
+	return templates.TemplateResponse(request, 'scan_new.html', _ctx(user))
 
 
 @app.post('/scans')
@@ -278,8 +316,8 @@ def scan_detail(scan_id: int, request: Request, db: Session = Depends(get_db)):
 	counts = {sev: sum(1 for f in findings if f.severity == sev)
 			  for sev in ('critical', 'high', 'medium', 'low', 'info')}
 
-	return templates.TemplateResponse('scan_detail.html', _ctx(
-		request, user,
+	return templates.TemplateResponse(request, 'scan_detail.html', _ctx(
+		user,
 		scan=scan,
 		findings=findings,
 		counts=counts,
@@ -324,8 +362,8 @@ def report(scan_id: int, request: Request, db: Session = Depends(get_db)):
 		[type('F', (), {'owasp_ref': f.owasp_ref})() for f in findings]
 	)
 
-	return templates.TemplateResponse('report.html', _ctx(
-		request, user,
+	return templates.TemplateResponse(request, 'report.html', _ctx(
+		user,
 		scan=scan,
 		findings=findings,
 		counts=counts,

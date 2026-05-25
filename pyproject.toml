@@ -5,28 +5,77 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aura-inspector"
 version = "0.1.0"
-description = "Swiss Army knife of Salesforce Experience Cloud misconfigurations testing."
+description = "Swiss Army knife for auditing Salesforce Experience Cloud (Aura) misconfigurations."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Phani", email = "phani.dummy@hotmail.com" },
+]
+keywords = [
+    "salesforce", "experience-cloud", "aura", "security",
+    "pentest", "owasp", "misconfiguration", "scanner",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP",
+]
 dependencies = [
-	"fastmcp>=3.3.1",
-	"requests",
+    "requests>=2.28.0",
 ]
 
 [project.optional-dependencies]
-ai  = ["openai>=1.0.0", "tenacity>=8.2.0"]
-ui  = ["gradio>=4.0.0"]
-mcp = ["fastmcp>=2.0.0", "structlog>=24.1.0", "openai>=1.0.0", "tenacity>=8.2.0"]
-web = [
-	"fastapi>=0.104.0",
-	"uvicorn[standard]>=0.24.0",
-	"sqlalchemy>=2.0.0",
-	"jinja2>=3.1.0",
-	"python-multipart>=0.0.9",
-	"passlib[bcrypt]>=1.7.4",
-	"python-jose[cryptography]>=3.3.0",
+ai = [
+    "openai>=1.0.0",
+    "tenacity>=8.2.0",
 ]
+ui = [
+    "gradio>=4.0.0",
+]
+mcp = [
+    "fastmcp>=2.0.0",
+    "structlog>=24.1.0",
+    "openai>=1.0.0",
+    "tenacity>=8.2.0",
+]
+web = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "sqlalchemy>=2.0.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.9",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=3.1.0,<4.0.0",
+    "python-jose[cryptography]>=3.3.0",
+    "python-dotenv>=1.0.0",
+]
+all = [
+    "aura-inspector[ai,ui,mcp,web]",
+]
+
+[project.urls]
+Homepage = "https://github.com/phanimca/aura-inspector"
+Repository = "https://github.com/phanimca/aura-inspector"
+"Bug Tracker" = "https://github.com/phanimca/aura-inspector/issues"
 
 [project.scripts]
 aura-inspector     = "aura_cli:main"
 aura-inspector-ui  = "ui.app:main"
 aura-inspector-web = "web.main:main"
-aura-inspector-mcp = "mcp.server:mcp.run"
+aura-inspector-mcp = "mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"web" = ["templates/*.html"]
