@@ -15,7 +15,8 @@
       <div class="alert-danger-custom mb-3"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}</div>
       {% endif %}
 
-      <form method="post" action="/scans" id="scan-form">
+      <form method="post" action="/scans" id="scan-form"
+            data-sf-auth-enabled="{{ 'true' if sf_auth_enabled else 'false' }}">
 
         <!-- Target -->
         <div class="card p-4 mb-3">
@@ -151,7 +152,7 @@
 {% block extra_scripts %}
 <script>
 const form = document.getElementById('scan-form');
-const sfAuthEnabled = {{ 'true' if sf_auth_enabled else 'false' }};
+const sfAuthEnabled = form.dataset.sfAuthEnabled === 'true';
 
 function setScanMode(mode) {
   document.getElementById('auth-fields').style.display = (mode === 'auth') ? 'block' : 'none';
