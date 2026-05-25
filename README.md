@@ -13,7 +13,8 @@ For background, see the Mandiant blog post: [Auditing Salesforce Aura Data Expos
 
 | | |
 |---|---|
-| **Author** | [phanimca](https://github.com/phanimca) |
+| **Author** | Phani |
+| **Email** | phani.dummy@hotmail.com |
 | **Live App** | [https://phani-aura-inspector.vercel.app](https://phani-aura-inspector.vercel.app) |
 | **PyPI** | [phani-aura-inspector](https://pypi.org/project/phani-aura-inspector/) |
 | **License** | Apache 2.0 |
