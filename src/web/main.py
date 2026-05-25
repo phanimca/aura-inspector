@@ -61,6 +61,17 @@ _BASE_DIR = Path(__file__).parent
 
 app = FastAPI(title='Aura Inspector', docs_url=None, redoc_url=None)
 
+# ---------------------------------------------------------------------------
+# Base URL — used for absolute links, OAuth callbacks, etc.
+# On Vercel, VERCEL_URL is set automatically to the deployment host (no scheme).
+# Locally, fall back to WEB_PORT (default 8080).
+# ---------------------------------------------------------------------------
+if os.environ.get('VERCEL') == '1':
+	_vercel_host = os.environ.get('VERCEL_URL', 'phani-aura-inspector.vercel.app')
+	APP_BASE_URL: str = f'https://{_vercel_host}'
+else:
+	APP_BASE_URL = f'http://localhost:{os.environ.get("WEB_PORT", "8080")}'
+
 # Mount static files directory (CSS/images if any).
 # Guard against read-only serverless filesystems (e.g. Vercel).
 _STATIC_DIR = _BASE_DIR / 'static'
@@ -94,7 +105,7 @@ def _require_user(request: Request, db: Session) -> User | None:
 
 def _ctx(user: User | None = None, **kwargs) -> dict:
 	"""Build a base template context dict (request is injected by starlette 1.x automatically)."""
-	return {'user': user, **kwargs}
+	return {'user': user, 'app_base_url': APP_BASE_URL, **kwargs}
 
 
 # ---------------------------------------------------------------------------

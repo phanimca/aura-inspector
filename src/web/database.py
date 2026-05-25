@@ -28,23 +28,28 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
+# ---------------------------------------------------------------------------
+# Environment detection
+# ---------------------------------------------------------------------------
+# Vercel automatically sets VERCEL=1 on every serverless invocation.
+# Use it instead of fragile filesystem probing.
+_IS_VERCEL: bool = os.environ.get('VERCEL') == '1'
+
 # Resolve the database URL.
 # Priority:
 #   1. DATABASE_URL env var  — must contain a valid scheme (e.g. postgresql://,
 #                               sqlite:///...).  Empty / non-URL values are ignored.
-#   2. Local data/ directory — used when running locally or in Docker
-#   3. /tmp fallback          — used on read-only serverless filesystems (Vercel)
+#   2. /tmp (Vercel)          — ephemeral but always writable on serverless.
+#   3. Local data/ directory  — used when running locally or in Docker.
 _raw_db_url = os.environ.get('DATABASE_URL', '').strip()
 DATABASE_URL: str = _raw_db_url if '://' in _raw_db_url else ''
 if not DATABASE_URL:
-	_DATA_DIR = Path(__file__).resolve().parent.parent.parent / 'data'
-	try:
+	if _IS_VERCEL:
+		DATABASE_URL = 'sqlite:////tmp/aura_inspector.db'
+	else:
+		_DATA_DIR = Path(__file__).resolve().parent.parent.parent / 'data'
 		_DATA_DIR.mkdir(exist_ok=True)
 		DATABASE_URL = f'sqlite:///{_DATA_DIR}/aura_inspector.db'
-	except OSError:
-		# Serverless environment with read-only project root (e.g. Vercel) —
-		# fall back to the writable /tmp directory.
-		DATABASE_URL = 'sqlite:////tmp/aura_inspector.db'
 
 # connect_args is SQLite-specific; omit it for other databases (e.g. PostgreSQL)
 _connect_args = {'check_same_thread': False} if DATABASE_URL.startswith('sqlite') else {}

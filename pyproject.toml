@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "phani-aura-inspector"
-version = "0.3.0"
+version = "0.3.1"
 description = "Swiss Army knife for auditing Salesforce Experience Cloud (Aura) misconfigurations."
 readme = "README.md"
 license = "Apache-2.0"
@@ -73,6 +73,11 @@ aura-inspector     = "aura_cli:main"
 aura-inspector-ui  = "ui.app:main"
 aura-inspector-web = "web.main:main"
 aura-inspector-mcp = "mcp.server:main"
+
+[tool.setuptools]
+# aura_cli, aura_helper, colored_logger are standalone modules (no __init__.py);
+# find_packages() only discovers packages, so list them explicitly here.
+py-modules = ["aura_cli", "aura_helper", "colored_logger"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
