@@ -26,7 +26,7 @@ For background, see the Mandiant blog post: [Auditing Salesforce Aura Data Expos
 1. [Features](#features)
 2. [Architecture](#architecture)
 3. [Requirements](#requirements)
-4. [API Keys and Secrets](#api-keys-and-secrets)
+4. [Environment Variables](#environment-variables)
 5. [Installation](#installation)
 6. [CLI Usage](#cli-usage)
 7. [Web Dashboard](#web-dashboard)
@@ -106,23 +106,104 @@ aura-inspector/
 
 ---
 
-## API Keys and Secrets
+## Environment Variables
 
-| Variable | Required for | Where to set |
+All configuration is driven by environment variables — no config files are needed.  
+For local development, create a `.env` file at the repo root (it is git-ignored).
+
+> **Security note:** Never commit secrets to source control.
+
+### Required — app will not work correctly without these
+
+| Variable | Example | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | AI-powered scan analysis and `explain_finding` MCP tool | Environment variable or `.env` file |
-| `OPENAI_MODEL` | Override GPT model (default: `gpt-4o`) | Environment variable |
-| `SECRET_KEY` | JWT signing for the web dashboard | Environment variable — **must be changed in production** |
-| Salesforce session cookie (`sid=...`) | Authenticated scans | Passed via `-c` flag or `cookies` tool parameter |
-| `SF_INSTANCE_URL` | Gradio OAuth flow (optional) | Environment variable |
-| `SF_CLIENT_ID` | Gradio OAuth flow (optional) | Environment variable |
+| `DATABASE_URL` | `postgresql://user:pass@host/db?sslmode=require` | Persistent storage. Without it the app uses ephemeral SQLite in `/tmp` and **all data is lost on every serverless cold start**. Use [Neon](https://neon.tech) (free tier) or Vercel Postgres. |
+| `SECRET_KEY` | `openssl rand -hex 32` output | Signs JWT session cookies. The built-in default is public and **insecure in production** — always override this. |
+| `APP_BASE_URL` | `https://phani-aura-inspector.vercel.app` | Canonical public URL of the app. Required for Salesforce OAuth — without it the OAuth redirect URI uses the ephemeral Vercel deployment URL and causes a `redirect_uri_mismatch` error on every new deploy. |
 
-> **Security note:** Never commit `OPENAI_API_KEY` or `SECRET_KEY` to source control. Use a `.env` file (excluded from git) or your OS keychain.
+### Required for Salesforce authenticated scans
 
-Create a `.env` file at the repo root for local development:
+Create a Salesforce **Connected App** with OAuth enabled.  
+Set the **Callback URL** to `https://<your-app>.vercel.app/auth/sf/callback`.  
+Enable scopes: **api**, **web**.
+
+| Variable | Example | Description |
+|---|---|---|
+| `SF_CLIENT_ID` | `3MVG9...` | Connected App Consumer Key |
+| `SF_CLIENT_SECRET` | `ABC123...` | Consumer Secret (optional for public/PKCE apps) |
+| `SF_INSTANCE_URL` | `https://login.salesforce.com` | Login URL — use `https://test.salesforce.com` for sandbox. Defaults to production. |
+
+### Required for AI-powered analysis (GPT-4o / GitHub Models)
+
+Without these, every scan falls back to rule-based risk scoring automatically.
+
+| Variable | Example | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | `ghp_...` (GitHub PAT) or `sk-...` (OpenAI key) | API key for the AI analysis endpoint |
+| `OPENAI_BASE_URL` | `https://models.github.ai/inference` | Base URL for an OpenAI-compatible endpoint. Leave unset to use OpenAI directly. Set to the GitHub Models URL to use GitHub Models (free with a PAT that has `models:read` permission). |
+| `OPENAI_MODEL` | `openai/gpt-4o-mini` | Model name. Use `openai/gpt-4o-mini` for GitHub Models or `gpt-4o` for OpenAI. |
+
+#### GitHub Models quick-start (free alternative to OpenAI)
+
+1. Generate a GitHub Personal Access Token with **Models → Read** permission.
+2. Set the three variables above in Vercel.
+3. No Connected App, no paid subscription needed.
+
+### Optional — have safe defaults
+
+| Variable | Default | Override when |
+|---|---|---|
+| `DEFAULT_ADMIN_USERNAME` | `phani` | You want a different admin username |
+| `DEFAULT_ADMIN_EMAIL` | `phani.dummy@hotmail.com` | You want a different admin email |
+| `DEFAULT_ADMIN_PASSWORD` | `Admin@123` | **Change this** — the default is public |
+| `WEB_PORT` | `8080` | Running the web server locally on a different port |
+
+### Set automatically by Vercel (do not add manually)
+
+| Variable | Description |
+|---|---|
+| `VERCEL` | Set to `1` on every serverless invocation |
+| `VERCEL_URL` | Deployment-specific URL (changes per deploy — do not use for OAuth redirect URIs) |
+| `VERCEL_PROJECT_PRODUCTION_URL` | Stable production alias — used as fallback if `APP_BASE_URL` is not set |
+| `WEB_ENV` | Set to `production` via `vercel.json` |
+
+### Vercel setup checklist
+
+Go to your Vercel project → **Settings → Environment Variables** and add:
+
 ```
-OPENAI_API_KEY=sk-...
-SECRET_KEY=some-long-random-string
+DATABASE_URL          = postgresql://...          (Production + Preview)
+SECRET_KEY            = <random 32-byte hex>      (Production + Preview)
+APP_BASE_URL          = https://<your-alias>.vercel.app  (Production only)
+SF_CLIENT_ID          = <Connected App key>       (Production + Preview)
+SF_CLIENT_SECRET      = <Consumer secret>         (Production + Preview)
+OPENAI_API_KEY        = <GitHub PAT or sk-...>    (Production + Preview)
+OPENAI_BASE_URL       = https://models.github.ai/inference  (Production + Preview)
+OPENAI_MODEL          = openai/gpt-4o-mini        (Production + Preview)
+DEFAULT_ADMIN_PASSWORD = <strong password>        (Production only)
+```
+
+After adding variables, redeploy: `vercel --prod --yes`
+
+### Local `.env` example
+
+```dotenv
+# Required
+DATABASE_URL=sqlite:///./data/aura_inspector.db
+SECRET_KEY=replace-with-a-long-random-string
+APP_BASE_URL=http://localhost:8080
+
+# Salesforce OAuth
+SF_CLIENT_ID=3MVG9...
+SF_CLIENT_SECRET=ABC123...
+
+# AI analysis via GitHub Models (free)
+OPENAI_API_KEY=ghp_your_github_pat
+OPENAI_BASE_URL=https://models.github.ai/inference
+OPENAI_MODEL=openai/gpt-4o-mini
+
+# Admin account
+DEFAULT_ADMIN_PASSWORD=MyStrongPassword!
 ```
 
 ---
@@ -272,11 +353,17 @@ python src/web/main.py
 
 ### Environment variables
 
+See the [Environment Variables](#environment-variables) section for the full reference.
+Key variables for the web dashboard:
+
 | Variable | Default | Description |
 |---|---|---|
-| `SECRET_KEY` | `aura-inspector-dev-key-REPLACE-IN-PRODUCTION` | JWT signing key — **must be changed in production** |
-| `OPENAI_API_KEY` | *(none)* | Enables AI analysis on scan results |
-| `WEB_PORT` | `8080` | Listening port |
+| `SECRET_KEY` | *(insecure default)* | JWT signing key — **must be set in production** |
+| `DATABASE_URL` | SQLite in `/tmp` | PostgreSQL URL for persistent storage |
+| `APP_BASE_URL` | auto-detected | Canonical public URL — required for Salesforce OAuth |
+| `OPENAI_API_KEY` | *(none)* | Enables AI analysis; falls back to rule-based scoring |
+| `OPENAI_BASE_URL` | *(OpenAI direct)* | Set to `https://models.github.ai/inference` for GitHub Models |
+| `OPENAI_MODEL` | `openai/gpt-4o-mini` | Model name for the AI analysis endpoint |
 
 ### Routes summary
 
@@ -425,11 +512,21 @@ docker compose up --build aura-inspector-web
 
 Create a `.env` file at the repo root (Docker Compose picks it up automatically):
 
-```
-OPENAI_API_KEY=sk-...
-SECRET_KEY=your-long-random-production-key
-SF_INSTANCE_URL=https://yourinstance.my.salesforce.com
+```dotenv
+# Required
+DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
+SECRET_KEY=replace-with-a-long-random-string
+APP_BASE_URL=https://your-domain.com
+
+# Salesforce OAuth
 SF_CLIENT_ID=your-connected-app-client-id
+SF_CLIENT_SECRET=your-consumer-secret
+SF_INSTANCE_URL=https://yourinstance.my.salesforce.com
+
+# AI analysis via GitHub Models
+OPENAI_API_KEY=ghp_your_github_pat
+OPENAI_BASE_URL=https://models.github.ai/inference
+OPENAI_MODEL=openai/gpt-4o-mini
 ```
 
 ---
