@@ -110,11 +110,13 @@ class ScanJob(Base):
 	app_path = Column(String(256))
 	aura_path = Column(String(256))
 	proxy = Column(String(256))
-	status = Column(String(20), default='pending')  # pending | running | completed | failed
+	status = Column(String(20), default='pending')  # pending | running | completed | failed | cancelled
+	progress = Column(String(200), default='')       # human-readable phase label updated in real-time
 	error_message = Column(Text)
 	risk_score = Column(Integer, default=0)
 	created_at = Column(DateTime, default=datetime.utcnow)
 	completed_at = Column(DateTime)
+	cancelled_at = Column(DateTime)
 	user = relationship('User', back_populates='scans')
 	findings = relationship('Finding', back_populates='scan_job', cascade='all, delete-orphan')
 	ai_analysis = relationship(
@@ -178,5 +180,27 @@ def get_db():
 
 
 def init_db():
-	"""Create all tables if they do not yet exist."""
+	"""Create all tables if they do not yet exist, then run incremental migrations."""
 	Base.metadata.create_all(bind=engine)
+	_run_migrations()
+
+
+def _run_migrations() -> None:
+	"""Apply additive schema changes to existing tables (safe to run on every startup)."""
+	from sqlalchemy import inspect as sa_inspect, text
+	inspector = sa_inspect(engine)
+	# scan_jobs additions introduced with the parallel-scan / cancel feature
+	if 'scan_jobs' in inspector.get_table_names():
+		existing = {c['name'] for c in inspector.get_columns('scan_jobs')}
+		additions: list[str] = []
+		if 'progress' not in existing:
+			additions.append("ALTER TABLE scan_jobs ADD COLUMN progress VARCHAR(200) DEFAULT ''")
+		if 'cancelled_at' not in existing:
+			additions.append('ALTER TABLE scan_jobs ADD COLUMN cancelled_at DATETIME')
+		if additions:
+			with engine.begin() as conn:
+				for stmt in additions:
+					try:
+						conn.execute(text(stmt))
+					except Exception as exc:  # column already exists in a concurrent startup
+						logger.debug('Migration skipped (%s): %s', stmt[:60], exc)

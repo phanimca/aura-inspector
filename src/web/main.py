@@ -68,14 +68,35 @@ app = FastAPI(title='Salesforce Security AI Scanner', docs_url=None, redoc_url=N
 
 # ---------------------------------------------------------------------------
 # Base URL — used for absolute links, OAuth callbacks, etc.
-# On Vercel, VERCEL_URL is set automatically to the deployment host (no scheme).
-# Locally, fall back to WEB_PORT (default 8080).
+#
+# Resolution order (first non-empty value wins):
+#   1. APP_BASE_URL env var          — set this once in Vercel to the permanent URL
+#                                      e.g. https://phani-aura-inspector.vercel.app
+#   2. VERCEL_PROJECT_PRODUCTION_URL — Vercel's stable production alias (no scheme)
+#   3. VERCEL_URL                    — deployment-specific URL (changes per deploy,
+#                                      DO NOT rely on this for OAuth redirect URIs)
+#   4. WEB_PORT                      — local development fallback
+#
+# For Salesforce OAuth the redirect_uri MUST be stable and match the value
+# registered in your Connected App.  Set APP_BASE_URL in Vercel environment
+# variables (all environments) to avoid redirect_uri_mismatch errors.
 # ---------------------------------------------------------------------------
-if os.environ.get('VERCEL') == '1':
-	_vercel_host = os.environ.get('VERCEL_URL', 'phani-aura-inspector.vercel.app')
-	APP_BASE_URL: str = f'https://{_vercel_host}'
-else:
-	APP_BASE_URL = f'http://localhost:{os.environ.get("WEB_PORT", "8080")}'
+def _resolve_app_base_url() -> str:
+	explicit = os.environ.get('APP_BASE_URL', '').strip().rstrip('/')
+	if explicit:
+		return explicit
+	if os.environ.get('VERCEL') == '1':
+		# VERCEL_PROJECT_PRODUCTION_URL is the stable alias; available in Vercel Runtime ≥ 3
+		prod_url = os.environ.get('VERCEL_PROJECT_PRODUCTION_URL', '').strip()
+		if prod_url:
+			return f'https://{prod_url}'
+		# Last resort: deployment-specific URL (breaks OAuth if it changes between deploys)
+		deploy_url = os.environ.get('VERCEL_URL', 'phani-aura-inspector.vercel.app').strip()
+		return f'https://{deploy_url}'
+	return f'http://localhost:{os.environ.get("WEB_PORT", "8080")}'
+
+APP_BASE_URL: str = _resolve_app_base_url()
+logger.info('APP_BASE_URL resolved to: %s', APP_BASE_URL)
 
 # Mount static files directory (CSS/images if any).
 # Guard against read-only serverless filesystems (e.g. Vercel).
@@ -126,6 +147,17 @@ _DEFAULT_ADMIN_PASSWORD = os.environ.get('DEFAULT_ADMIN_PASSWORD', 'Admin@123')
 _SF_INSTANCE_URL  = os.environ.get('SF_INSTANCE_URL', 'https://login.salesforce.com')
 _SF_CLIENT_ID     = os.environ.get('SF_CLIENT_ID', '')
 _SF_CLIENT_SECRET = os.environ.get('SF_CLIENT_SECRET', '')
+
+# AI / OpenAI configuration — set OPENAI_API_KEY in Vercel environment variables
+# to enable GPT-4o-powered analysis for all scans automatically.
+# Individual scans can also supply their own key via the Advanced Options form.
+# To use GitHub Models set:
+#   OPENAI_BASE_URL = https://models.github.ai/inference
+#   OPENAI_MODEL    = openai/gpt-4o-mini
+#   OPENAI_API_KEY  = <your GitHub personal access token>
+_AI_KEY_CONFIGURED: bool = bool(os.environ.get('OPENAI_API_KEY', '').strip())
+_AI_BASE_URL: str = os.environ.get('OPENAI_BASE_URL', '').strip()
+_AI_MODEL: str = os.environ.get('OPENAI_MODEL', 'openai/gpt-4o-mini')
 
 
 def _seed_default_admin(db) -> None:
@@ -291,6 +323,8 @@ def scan_new(request: Request, db: Session = Depends(get_db)):
 		user,
 		sf_login_url=_SF_INSTANCE_URL,
 		sf_auth_enabled=bool(_SF_CLIENT_ID),
+		ai_enabled=_AI_KEY_CONFIGURED,
+		ai_model=_AI_MODEL,
 	))
 
 
@@ -334,6 +368,7 @@ def scan_create(
 		'proxy': proxy.strip() or None,
 		'cookies': cookies.strip() or None,
 		'openai_api_key': openai_key.strip() or None,
+		'openai_base_url': _AI_BASE_URL or None,
 	})
 
 	return RedirectResponse(f'/scans/{job.id}', status_code=302)
@@ -384,6 +419,7 @@ def sf_oauth_start(
 			'aura_path': aura_path.strip() or None,
 			'proxy': proxy.strip() or None,
 			'openai_api_key': openai_key.strip() or None,
+			'openai_base_url': _AI_BASE_URL or None,
 		}),
 		sf_instance_url=sf_instance_url,
 		sf_client_id=_SF_CLIENT_ID,
@@ -511,7 +547,37 @@ def scan_status(scan_id: int, request: Request, db: Session = Depends(get_db)):
 		'risk_score': scan.risk_score,
 		'finding_count': len(scan.findings),
 		'error': scan.error_message,
+		'progress': getattr(scan, 'progress', '') or '',
 	})
+
+
+@app.post('/scans/{scan_id}/cancel')
+def scan_cancel(scan_id: int, request: Request, db: Session = Depends(get_db)):
+	user = _get_user(request, db)
+	if not user:
+		return JSONResponse({'error': 'unauthorized'}, status_code=401)
+
+	scan = db.query(ScanJob).filter(ScanJob.id == scan_id).first()
+	if not scan or (not user.is_admin and scan.user_id != user.id):
+		return JSONResponse({'error': 'not found'}, status_code=404)
+
+	if scan.status not in ('pending', 'running'):
+		return JSONResponse({'error': f'scan is already {scan.status}'}, status_code=400)
+
+	# Signal the background thread to stop.
+	scan_runner.cancel(scan_id)
+
+	# Update DB immediately for instant UI feedback; the thread also
+	# updates when it detects the stop_event.
+	scan.status = 'cancelled'
+	scan.progress = 'Cancelling…'
+	try:
+		from datetime import datetime as _dt
+		scan.cancelled_at = _dt.utcnow()
+	except Exception:
+		pass
+	db.commit()
+	return JSONResponse({'status': 'cancelled'})
 
 
 @app.get('/reports/{scan_id}', response_class=HTMLResponse)

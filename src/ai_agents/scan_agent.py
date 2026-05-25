@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import concurrent.futures
 import json
 import logging
 import os
+import threading
 from typing import Callable, Optional
 
 from colored_logger import logger
@@ -25,6 +27,10 @@ from scanners.base_scanner import Severity, ScanFinding
 from ai_agents.remediation_advisor import RemediationAdvisor
 
 _log = logging.getLogger(__name__)
+
+
+class ScanCancelledError(Exception):
+	"""Raised inside run_full_scan when the caller sets the stop_event."""
 
 try:
     import openai
@@ -73,9 +79,13 @@ class SecurityScanAgent:
 	the agent falls back to rule-based analysis automatically.
 	"""
 
-	def __init__(self, aura_helper, openai_api_key: Optional[str] = None, verbose: bool = False):
+	def __init__(self, aura_helper, openai_api_key: Optional[str] = None,
+	             openai_base_url: Optional[str] = None, verbose: bool = False):
 		self.aura = aura_helper
 		self.api_key = openai_api_key or os.environ.get('OPENAI_API_KEY')
+		# Base URL for the OpenAI-compatible endpoint.
+		# Set OPENAI_BASE_URL=https://models.github.ai/inference to use GitHub Models.
+		self.base_url = openai_base_url or os.environ.get('OPENAI_BASE_URL') or None
 		self.verbose = verbose
 		self.all_findings: list[ScanFinding] = []
 
@@ -83,44 +93,88 @@ class SecurityScanAgent:
 	# Public entry point
 	# ------------------------------------------------------------------
 
-	def run_full_scan(self, progress_callback: Optional[Callable[[str], None]] = None) -> dict:
+	def run_full_scan(
+		self,
+		progress_callback: Optional[Callable[[str], None]] = None,
+		stop_event: Optional[threading.Event] = None,
+	) -> dict:
 		"""
-		Run all three scanners sequentially, then return enriched findings.
+		Run all three scanners concurrently, then run AI/rule-based analysis.
 
 		Parameters
 		----------
 		progress_callback : callable, optional
-		    Called with a human-readable status string before each phase.
+		    Called with a human-readable status string as phases complete.
+		stop_event : threading.Event, optional
+		    Set this from another thread to request cancellation.
+		    Raises ScanCancelledError when detected between phases.
 
 		Returns
 		-------
 		dict with keys: findings, ai_analysis, summary
 		"""
 		self.all_findings = []
+		_stop = stop_event or threading.Event()
+
+		if _stop.is_set():
+			raise ScanCancelledError('Scan cancelled before it started')
 
 		if progress_callback:
-			progress_callback('Phase 1/3 – Aura endpoint fuzzing …')
-		fuzzer = AuraFuzzer(self.aura)
-		fuzzer_findings = fuzzer.scan()
-		self.all_findings.extend(fuzzer_findings)
-		_log.info('[ScanAgent] AuraFuzzer: %d findings', len(fuzzer_findings))
+			progress_callback('Running all 3 scanners in parallel…')
+
+		def _run_scanner(scanner_cls, name: str) -> tuple[str, list]:
+			if _stop.is_set():
+				return name, []
+			findings = scanner_cls(self.aura).scan()
+			_log.info('[ScanAgent] %s: %d findings', name, len(findings))
+			return name, findings
+
+		# Run AuraFuzzer, IDORScanner, ApexScanner concurrently.
+		scanner_tasks = [
+			(AuraFuzzer, 'AuraFuzzer'),
+			(IDORScanner, 'IDORScanner'),
+			(ApexScanner, 'ApexScanner'),
+		]
+
+		all_findings_map: dict[str, list] = {}
+		with concurrent.futures.ThreadPoolExecutor(
+			max_workers=3, thread_name_prefix='scanner'
+		) as pool:
+			futures = {
+				pool.submit(_run_scanner, cls, name): name
+				for cls, name in scanner_tasks
+			}
+			pending = set(futures)
+			completed_count = 0
+
+			# Poll with 0.5 s timeout so the stop_event is checked frequently.
+			while pending:
+				if _stop.is_set():
+					for f in futures:
+						f.cancel()
+					raise ScanCancelledError('Scan cancelled during parallel scanner phase')
+				done, pending = concurrent.futures.wait(
+					pending, timeout=0.5,
+					return_when=concurrent.futures.FIRST_COMPLETED,
+				)
+				completed_count += len(done)
+				if progress_callback and done:
+					names_done = ', '.join(futures[f] for f in done)
+					progress_callback(
+						f'Scanners: {completed_count}/3 complete (✓ {names_done})'
+					)
+
+		# Collect results in deterministic order.
+		for f, name in futures.items():
+			_, findings = f.result()
+			all_findings_map[name] = findings
+			self.all_findings.extend(findings)
+
+		if _stop.is_set():
+			raise ScanCancelledError('Scan cancelled after scanner phase')
 
 		if progress_callback:
-			progress_callback('Phase 2/3 – IDOR vulnerability scan …')
-		idor = IDORScanner(self.aura)
-		idor_findings = idor.scan()
-		self.all_findings.extend(idor_findings)
-		_log.info('[ScanAgent] IDORScanner: %d findings', len(idor_findings))
-
-		if progress_callback:
-			progress_callback('Phase 3/3 – Apex system-mode detection …')
-		apex = ApexScanner(self.aura)
-		apex_findings = apex.scan()
-		self.all_findings.extend(apex_findings)
-		_log.info('[ScanAgent] ApexScanner: %d findings', len(apex_findings))
-
-		if progress_callback:
-			msg = 'Generating AI analysis …' if self.api_key else 'Generating rule-based analysis …'
+			msg = 'Generating AI analysis…' if (self.api_key and _OPENAI_AVAILABLE) else 'Generating rule-based analysis…'
 			progress_callback(msg)
 
 		ai_analysis = self._analyze_with_ai() if (self.api_key and _OPENAI_AVAILABLE) else self._rule_based_analysis()
@@ -146,14 +200,17 @@ class SecurityScanAgent:
 			)
 			def _call(client: openai.OpenAI, messages: list) -> str:
 				response = client.chat.completions.create(
-					model=os.environ.get('OPENAI_MODEL', 'gpt-4o'),
+					model=os.environ.get('OPENAI_MODEL', 'openai/gpt-4o-mini'),
 					messages=messages,
 					response_format={'type': 'json_object'},
 					max_tokens=2000,
 				)
 				return response.choices[0].message.content
 
-			client = openai.OpenAI(api_key=self.api_key)
+			client = openai.OpenAI(
+				api_key=self.api_key,
+				**({'base_url': self.base_url} if self.base_url else {}),
+			)
 			findings_json = json.dumps([f.to_dict() for f in self.all_findings], indent=2)
 			messages = [
 				{'role': 'system', 'content': _AGENT_SYSTEM_PROMPT},

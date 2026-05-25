@@ -38,6 +38,11 @@
       </p>
     </div>
     <div class="d-flex gap-2">
+      {% if scan.status in ('pending', 'running') %}
+      <button class="btn btn-outline-danger btn-sm" id="cancel-btn" onclick="cancelScan()">
+        <i class="bi bi-stop-circle me-1"></i>Cancel Scan
+      </button>
+      {% endif %}
       {% if scan.status == 'completed' %}
       <a href="/reports/{{ scan.id }}" class="btn btn-outline-secondary btn-sm" target="_blank">
         <i class="bi bi-file-earmark-text me-1"></i>Full Report
@@ -56,9 +61,17 @@
       <div class="spinner-border text-primary" role="status" style="width:1.5rem;height:1.5rem;"></div>
       <div>
         <strong>Scan in progress…</strong>
-        <p class="text-muted small mb-0" id="progress-text">Initialising scanners</p>
+        <p class="text-muted small mb-0" id="progress-text">{{ scan.progress or 'Initialising scanners…' }}</p>
       </div>
     </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Cancelled banner ──────────────────────────────────── -->
+  {% if scan.status == 'cancelled' %}
+  <div class="card p-4 mb-4" style="border-color:#d2992233;background:#d2992211;">
+    <h6 class="mb-1" style="color:#d29922;"><i class="bi bi-slash-circle me-1"></i>Scan Cancelled</h6>
+    <p class="mb-0 small text-muted">This scan was cancelled before it completed. No results are available.</p>
   </div>
   {% endif %}
 
@@ -179,29 +192,33 @@
 {% block extra_scripts %}
 {% if scan.status in ('pending', 'running') %}
 <script>
-let dots = 0;
-const msgs = ['Fuzzing Aura endpoints', 'Testing IDOR vectors', 'Probing Apex controllers', 'Running AI analysis'];
-let msgIdx = 0;
-
-const banner = document.getElementById('progress-banner');
-const pText  = document.getElementById('progress-text');
+const pText = document.getElementById('progress-text');
 
 function poll() {
   fetch('/scans/{{ scan.id }}/status')
     .then(r => r.json())
     .then(d => {
-      if (d.status === 'running') {
-        dots = (dots + 1) % 4;
-        msgIdx = (msgIdx + 1) % msgs.length;
-        pText.textContent = msgs[msgIdx] + '.'.repeat(dots + 1);
-        setTimeout(poll, 2000);
+      // Show the real-time progress text from the server when available.
+      if (d.progress) pText.textContent = d.progress;
+      if (d.status === 'pending' || d.status === 'running') {
+        setTimeout(poll, 1500);
       } else {
         window.location.reload();
       }
     })
     .catch(() => setTimeout(poll, 3000));
 }
-setTimeout(poll, 2000);
+setTimeout(poll, 1500);
+
+function cancelScan() {
+  const btn = document.getElementById('cancel-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Cancelling…';
+  fetch('/scans/{{ scan.id }}/cancel', { method: 'POST' })
+    .then(r => r.json())
+    .then(() => { setTimeout(() => window.location.reload(), 800); })
+    .catch(() => { btn.disabled = false; btn.innerHTML = '<i class="bi bi-stop-circle me-1"></i>Cancel Scan'; });
+}
 </script>
 {% endif %}
 <script>

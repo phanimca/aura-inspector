@@ -103,9 +103,27 @@
               <input type="text" name="proxy" class="form-control" placeholder="http://127.0.0.1:8080"/>
             </div>
             <div>
-              <label class="form-label small fw-semibold">OpenAI API Key <span class="text-muted fw-normal">(optional — enables GPT-4o analysis)</span></label>
+              <label class="form-label small fw-semibold">AI Analysis (GPT-4o)</label>
+              {% if ai_enabled %}
+              <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#3fb95011;border:1px solid #3fb95033;">
+                <i class="bi bi-robot" style="color:#3fb950;font-size:1.1rem;"></i>
+                <div>
+                  <span style="color:#3fb950;font-weight:600;">Enabled</span>
+                  <span class="text-muted small ms-1">({{ ai_model }} configured server-side)</span>
+                </div>
+              </div>
+              <div class="form-text mt-1" style="color:#8b949e;">GPT-4o will automatically analyse findings. To use a different key for this scan, expand below.</div>
+              <details class="mt-2">
+                <summary style="cursor:pointer;font-size:.8rem;color:#8b949e;">Override API key for this scan only</summary>
+                <input type="password" name="openai_key" class="form-control mt-2" placeholder="sk-… (leave blank to use server key)"/>
+              </details>
+              {% else %}
               <input type="password" name="openai_key" class="form-control" placeholder="sk-…"/>
-              <div class="form-text" style="color:#8b949e;">Without a key, rule-based risk scoring is used automatically.</div>
+              <div class="form-text" style="color:#8b949e;">
+                Enter your OpenAI API key to enable GPT-4o analysis, or leave blank for rule-based risk scoring.
+                To enable AI for all scans, set <code>OPENAI_API_KEY</code> in your Vercel environment variables.
+              </div>
+              {% endif %}
             </div>
           </div>
         </div>
