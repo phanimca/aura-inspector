@@ -61,11 +61,14 @@
             {% if sf_auth_enabled %}
             <div class="mb-3">
               <label class="form-label small fw-semibold">Salesforce Login URL</label>
-              <select name="sf_login_url" id="sf_login_url" class="form-control" onchange="toggleCustomUrl(this.value)">
+              <select id="sf_login_url" class="form-control" onchange="toggleCustomUrl(this.value)">
                 <option value="https://login.salesforce.com"{% if sf_login_url == 'https://login.salesforce.com' %} selected{% endif %}>Production — login.salesforce.com</option>
                 <option value="https://test.salesforce.com"{% if sf_login_url == 'https://test.salesforce.com' %} selected{% endif %}>Sandbox — test.salesforce.com</option>
                 <option value="custom">Custom domain (My Domain)…</option>
               </select>
+              <!-- Always-present hidden input that carries the final resolved URL -->
+              <input type="hidden" name="sf_login_url" id="sf_login_url_hidden"
+                     value="{{ sf_login_url or 'https://login.salesforce.com' }}"/>
             </div>
             <div id="custom-url-field" class="mb-3" style="display:none;">
               <label class="form-label small fw-semibold">Custom Login URL</label>
@@ -170,30 +173,22 @@ function setScanMode(mode) {
 
 function toggleCustomUrl(val) {
   const customDiv = document.getElementById('custom-url-field');
+  const hidden = document.getElementById('sf_login_url_hidden');
   if (val === 'custom') {
     customDiv.style.display = 'block';
-    // Swap the hidden select value to whatever is in the text input
-    syncCustomUrl(document.getElementById('sf_login_url_custom').value);
+    // Sync hidden input to whatever is already typed in the custom field
+    const customVal = document.getElementById('sf_login_url_custom').value.trim();
+    hidden.value = customVal;
   } else {
     customDiv.style.display = 'none';
+    // val is the actual URL (production or sandbox) — use it directly
+    hidden.value = val;
   }
 }
 
-// Keep the hidden input (the select's value) in sync when user types a custom URL
+// Keep the hidden input in sync as the user types a custom URL
 function syncCustomUrl(val) {
-  const sel = document.getElementById('sf_login_url');
-  // Add/update a real hidden input carrying the final URL
-  let hidden = document.getElementById('sf_login_url_hidden');
-  if (!hidden) {
-    hidden = document.createElement('input');
-    hidden.type = 'hidden';
-    hidden.name = 'sf_login_url';
-    hidden.id = 'sf_login_url_hidden';
-    form.appendChild(hidden);
-    // Disable the select's name so only one value is submitted
-    sel.removeAttribute('name');
-  }
-  hidden.value = val.trim();
+  document.getElementById('sf_login_url_hidden').value = val.trim();
 }
 
 form.addEventListener('submit', (e) => {
