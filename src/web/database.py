@@ -30,11 +30,12 @@ from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
 # Resolve the database URL.
 # Priority:
-#   1. DATABASE_URL env var  — set this in Vercel/cloud to point at a managed DB
-#                               (e.g. postgresql://... or sqlite:////tmp/...)
+#   1. DATABASE_URL env var  — must contain a valid scheme (e.g. postgresql://,
+#                               sqlite:///...).  Empty / non-URL values are ignored.
 #   2. Local data/ directory — used when running locally or in Docker
 #   3. /tmp fallback          — used on read-only serverless filesystems (Vercel)
-DATABASE_URL = os.environ.get('DATABASE_URL')
+_raw_db_url = os.environ.get('DATABASE_URL', '').strip()
+DATABASE_URL: str = _raw_db_url if '://' in _raw_db_url else ''
 if not DATABASE_URL:
 	_DATA_DIR = Path(__file__).resolve().parent.parent.parent / 'data'
 	try:
