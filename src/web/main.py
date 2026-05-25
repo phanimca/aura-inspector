@@ -613,6 +613,11 @@ def report(scan_id: int, request: Request, db: Session = Depends(get_db)):
 	remediation_sections = advisor.generate_report_sections(
 		[type('F', (), {'owasp_ref': f.owasp_ref})() for f in findings]
 	)
+	# Per-finding remediation lookup (setup steps + apex code), keyed by finding id.
+	remediation_by_finding = {
+		f.id: advisor.get_remediation(type('F', (), {'owasp_ref': f.owasp_ref})())
+		for f in findings
+	}
 
 	return templates.TemplateResponse(request, 'report.html', _ctx(
 		user,
@@ -620,6 +625,7 @@ def report(scan_id: int, request: Request, db: Session = Depends(get_db)):
 		findings=findings,
 		counts=counts,
 		remediation_sections=remediation_sections,
+		remediation_by_finding=remediation_by_finding,
 		generated_at=datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC'),
 	))
 

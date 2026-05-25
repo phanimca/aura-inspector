@@ -114,43 +114,86 @@
   <section class="mb-5">
     <h2 class="h5 fw-bold mb-3 pb-2" style="border-bottom:2px solid #e9ecef;">Detailed Findings</h2>
     {% for finding in findings %}
+    {% set rem = remediation_by_finding.get(finding.id) %}
     <div class="finding-block {{ finding.severity }}">
+
+      <!-- Header row: severity + title + OWASP + scanner -->
       <div class="d-flex flex-wrap align-items-start gap-2 mb-2">
         <span class="sev-badge {{ finding.severity }}">{{ finding.severity }}</span>
         <strong>{{ finding.title }}</strong>
         {% if finding.owasp_ref %}
         <span style="font-size:.75rem;color:#666;background:#f0f0f0;padding:.1rem .4rem;border-radius:4px;">{{ finding.owasp_ref }}</span>
         {% endif %}
+        {% if finding.scanner %}
+        <span style="font-size:.72rem;color:#888;background:#f5f5f5;padding:.1rem .4rem;border-radius:4px;border:1px solid #e0e0e0;">{{ finding.scanner }}</span>
+        {% endif %}
       </div>
+
+      <!-- Description -->
       <p style="font-size:.87rem;margin-bottom:.5rem;">{{ finding.description }}</p>
+
+      <!-- Affected objects -->
+      {% if finding.affected_objects %}
+      <p class="fw-semibold mb-1" style="font-size:.8rem;">Affected Objects</p>
+      <div class="mb-2" style="font-size:.82rem;">
+        {% for obj in finding.affected_objects %}
+        <span style="display:inline-block;background:#e8f0ff;color:#1565c0;padding:.15rem .5rem;border-radius:4px;margin:.1rem .2rem .1rem 0;font-family:monospace;">{{ obj }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Evidence -->
       {% if finding.evidence %}
       <p class="fw-semibold mb-1" style="font-size:.8rem;">Evidence</p>
       <pre>{{ finding.evidence }}</pre>
       {% endif %}
+
+      <!-- Finding-level plain remediation note -->
       {% if finding.remediation %}
-      <p class="fw-semibold mb-1" style="font-size:.8rem;">Remediation</p>
-      <pre>{{ finding.remediation }}</pre>
+      <p class="fw-semibold mb-1" style="font-size:.8rem;">Remediation Note</p>
+      <p style="font-size:.85rem;margin-bottom:.75rem;">{{ finding.remediation }}</p>
       {% endif %}
+
+      <!-- Full remediation: setup steps + Apex code from RemediationAdvisor -->
+      {% if rem %}
+      <details style="margin-top:.5rem;">
+        <summary class="fw-semibold" style="font-size:.82rem;cursor:pointer;color:#1565c0;">
+          ▶ Salesforce Fix Guide — {{ rem.owasp }} {{ rem.title }}
+        </summary>
+        <div style="margin-top:.75rem;">
+          <p class="fw-semibold mb-1" style="font-size:.8rem;">Salesforce Setup Steps</p>
+          <ol style="font-size:.85rem;padding-left:1.25rem;">
+            {% for step in rem.setup_steps %}<li style="margin-bottom:.25rem;">{{ step }}</li>{% endfor %}
+          </ol>
+          {% if rem.apex_example %}
+          <p class="fw-semibold mb-1" style="font-size:.8rem;">Apex Code Fix</p>
+          <pre style="background:#0d1117;color:#c9d1d9;border:1px solid #30363d;">{{ rem.apex_example }}</pre>
+          {% endif %}
+        </div>
+      </details>
+      {% endif %}
+
     </div>
     {% else %}
     <p class="text-muted">No findings recorded for this scan.</p>
     {% endfor %}
   </section>
 
-  <!-- Remediation guide -->
+  <!-- Remediation guide (OWASP-level summary) -->
   {% if remediation_sections %}
   <section class="mb-5">
     <h2 class="h5 fw-bold mb-3 pb-2" style="border-bottom:2px solid #e9ecef;">Salesforce Remediation Guide</h2>
+    <p class="text-muted small mb-3">One entry per OWASP category identified in this scan. Expand individual findings above for finding-specific steps.</p>
     {% for section in remediation_sections %}
     <div class="remediation-card">
       <h6 class="fw-bold mb-1">{{ section.owasp }} — {{ section.title }}</h6>
       <p class="fw-semibold mb-1" style="font-size:.82rem;">Salesforce Setup Steps</p>
-      <ol style="font-size:.85rem;">
-        {% for step in section.setup_steps %}<li>{{ step }}</li>{% endfor %}
+      <ol style="font-size:.85rem;padding-left:1.25rem;">
+        {% for step in section.setup_steps %}<li style="margin-bottom:.25rem;">{{ step }}</li>{% endfor %}
       </ol>
       {% if section.apex_example %}
-      <p class="fw-semibold mb-1" style="font-size:.82rem;">Apex Code Fix</p>
-      <pre>{{ section.apex_example }}</pre>
+      <p class="fw-semibold mb-1 mt-2" style="font-size:.82rem;">Apex Code Fix</p>
+      <pre style="background:#0d1117;color:#c9d1d9;border:1px solid #30363d;">{{ section.apex_example }}</pre>
       {% endif %}
     </div>
     {% endfor %}
