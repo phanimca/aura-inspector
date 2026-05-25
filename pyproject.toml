@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "phani-aura-inspector"
-version = "0.3.1"
+version = "0.3.2"
 description = "Swiss Army knife for auditing Salesforce Experience Cloud (Aura) misconfigurations."
 readme = "README.md"
 license = "Apache-2.0"
