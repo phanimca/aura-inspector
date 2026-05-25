@@ -1,9 +1,9 @@
 {
   "version": 2,
-  "name": "phani-aura-inspector",
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index" }
   ],
+  "installCommand": "uv sync --frozen --extra web",
   "env": {
     "WEB_ENV": "production"
   }
