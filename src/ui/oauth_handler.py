@@ -36,6 +36,9 @@ Usage
     # cookies = 'sid=...'  – ready for AuraHelper
 """
 
+import base64
+import hashlib
+import secrets
 import threading
 import time
 import webbrowser
@@ -43,6 +46,20 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
+
+
+def generate_pkce_pair() -> tuple[str, str]:
+	"""Return (code_verifier, code_challenge) for the S256 PKCE method.
+
+	The verifier is a cryptographically random URL-safe string (86 chars,
+	well within the RFC 7636 requirement of 43–128 characters).  The
+	challenge is BASE64URL(SHA-256(verifier)) without padding, as required
+	by Salesforce when 'Require PKCE' is enabled on the Connected App.
+	"""
+	code_verifier = secrets.token_urlsafe(64)
+	digest = hashlib.sha256(code_verifier.encode()).digest()
+	code_challenge = base64.urlsafe_b64encode(digest).rstrip(b'=').decode()
+	return code_verifier, code_challenge
 
 CALLBACK_PORT = 8484
 REDIRECT_URI = f'http://localhost:{CALLBACK_PORT}/callback'
@@ -118,8 +135,19 @@ class SalesforceOAuthHandler:
 	# Public API
 	# ------------------------------------------------------------------
 
-	def get_authorization_url(self, redirect_uri: str = None, state: str = None) -> str:
-		"""Build the Salesforce /authorize URL that the user must visit."""
+	def get_authorization_url(
+		self,
+		redirect_uri: str = None,
+		state: str = None,
+		code_challenge: str = None,
+		code_challenge_method: str = 'S256',
+	) -> str:
+		"""Build the Salesforce /authorize URL that the user must visit.
+
+		Pass *code_challenge* (from :func:`generate_pkce_pair`) when the Connected
+		App has "Require PKCE" enabled — Salesforce will reject the request with
+		``missing required code challenge`` otherwise.
+		"""
 		params = {
 			'response_type': 'code',
 			'client_id': self.client_id,
@@ -129,6 +157,9 @@ class SalesforceOAuthHandler:
 		}
 		if state:
 			params['state'] = state
+		if code_challenge:
+			params['code_challenge'] = code_challenge
+			params['code_challenge_method'] = code_challenge_method
 		return f'{self.instance_url}/services/oauth2/authorize?{urlencode(params)}'
 
 	def authenticate_browser_flow(self, timeout_seconds: int = 120) -> dict:
@@ -185,8 +216,13 @@ class SalesforceOAuthHandler:
 	# Internal helpers
 	# ------------------------------------------------------------------
 
-	def _exchange_code(self, code: str, redirect_uri: str = None) -> dict:
-		"""POST to /services/oauth2/token and return the response payload."""
+	def _exchange_code(self, code: str, redirect_uri: str = None, code_verifier: str = None) -> dict:
+		"""POST to /services/oauth2/token and return the response payload.
+
+		Pass *code_verifier* (the value stored during :meth:`get_authorization_url`)
+		when the Connected App requires PKCE — Salesforce verifies it against the
+		``code_challenge`` sent in the original authorization request.
+		"""
 		payload = {
 			'grant_type': 'authorization_code',
 			'code': code,
@@ -195,6 +231,8 @@ class SalesforceOAuthHandler:
 		}
 		if self.client_secret:
 			payload['client_secret'] = self.client_secret
+		if code_verifier:
+			payload['code_verifier'] = code_verifier
 
 		response = requests.post(
 			f'{self.instance_url}/services/oauth2/token',

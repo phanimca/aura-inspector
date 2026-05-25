@@ -410,6 +410,12 @@ def sf_oauth_start(
 	web_redirect_uri = f'{APP_BASE_URL}/auth/sf/callback'
 	state_id = str(uuid.uuid4())
 
+	# Generate a PKCE pair before persisting OAuthState so everything is stored
+	# in a single DB write.  The verifier is sent with the token exchange request
+	# in the callback route; the challenge is sent in the authorization URL now.
+	from ui.oauth_handler import SalesforceOAuthHandler, generate_pkce_pair
+	code_verifier, code_challenge = generate_pkce_pair()
+
 	oauth_state = OAuthState(
 		id=state_id,
 		user_id=user.id,
@@ -425,18 +431,22 @@ def sf_oauth_start(
 		sf_client_id=_SF_CLIENT_ID,
 		sf_client_secret=_SF_CLIENT_SECRET or None,
 		redirect_uri=web_redirect_uri,
+		code_verifier=code_verifier,
 	)
 	db.add(oauth_state)
 	db.commit()
 
 	# Build the Salesforce authorization URL and redirect the user's browser.
-	from ui.oauth_handler import SalesforceOAuthHandler
 	handler = SalesforceOAuthHandler(
 		instance_url=sf_instance_url,
 		client_id=_SF_CLIENT_ID,
 		client_secret=_SF_CLIENT_SECRET or None,
 	)
-	auth_url = handler.get_authorization_url(redirect_uri=web_redirect_uri, state=state_id)
+	auth_url = handler.get_authorization_url(
+		redirect_uri=web_redirect_uri,
+		state=state_id,
+		code_challenge=code_challenge,
+	)
 	return RedirectResponse(auth_url, status_code=302)
 
 
@@ -477,7 +487,11 @@ def sf_oauth_callback(
 			client_id=oauth_state.sf_client_id,
 			client_secret=oauth_state.sf_client_secret,
 		)
-		token_data = handler._exchange_code(code=code, redirect_uri=oauth_state.redirect_uri)
+		token_data = handler._exchange_code(
+			code=code,
+			redirect_uri=oauth_state.redirect_uri,
+			code_verifier=oauth_state.code_verifier,
+		)
 		session_cookie = handler.get_session_cookie(token_data['access_token'])
 	except Exception as exc:
 		logger.error('Salesforce OAuth token exchange failed: %s', exc)

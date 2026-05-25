@@ -168,6 +168,7 @@ class OAuthState(Base):
 	sf_client_id = Column(String(500), nullable=False)
 	sf_client_secret = Column(String(500))               # Optional — only for web-server flow
 	redirect_uri = Column(String(500), nullable=False)   # Must match token exchange exactly
+	code_verifier = Column(String(128))                  # PKCE verifier — required when Connected App enforces PKCE
 
 
 # FastAPI dependency: yields a DB session and closes it when the request ends
@@ -209,3 +210,13 @@ def _run_migrations() -> None:
 				logger.info('Migration applied: added scan_jobs.%s', col_name)
 			except Exception as exc:  # column already exists in a concurrent startup
 				logger.debug('Migration skipped for scan_jobs.%s: %s', col_name, exc)
+	# oauth_states additions introduced with PKCE support
+	if 'oauth_states' in inspector.get_table_names():
+		existing_oa = {c['name'] for c in inspector.get_columns('oauth_states')}
+		if 'code_verifier' not in existing_oa:
+			try:
+				with engine.begin() as conn:
+					conn.execute(text('ALTER TABLE oauth_states ADD COLUMN code_verifier VARCHAR(128)'))
+				logger.info('Migration applied: added oauth_states.code_verifier')
+			except Exception as exc:
+				logger.debug('Migration skipped for oauth_states.code_verifier: %s', exc)
