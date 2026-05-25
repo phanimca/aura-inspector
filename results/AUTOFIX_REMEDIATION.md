@@ -4,7 +4,7 @@
 **Scan Date:** 2026-05-25  
 **Author:** Phani · phani.dummy@hotmail.com  
 **Mode:** Guest / Unauthenticated  
-**Risk Score:** 62 / 100 (Medium-High)
+**Risk Score:** 78 / 100 (High)
 
 ---
 
@@ -400,6 +400,19 @@ Run this checklist in **Setup → Profiles → [Site] Guest User → Object Sett
 [ ] Topic             → Read: REVIEW
 ```
 
+HTTP / Infrastructure:
+```
+[ ] HSTS header               → Add to CDN/WAF or Experience Cloud HTTP Headers
+[ ] X-Frame-Options           → Add: SAMEORIGIN
+[ ] X-Content-Type-Options    → Add: nosniff
+[ ] Referrer-Policy           → Add: strict-origin-when-cross-origin
+[ ] Permissions-Policy        → Add: camera=(), microphone=(), geolocation=()
+[ ] CSP wildcards (6 entries) → Replace with explicit subdomains
+[ ] Cookie flags              → Ensure Secure; HttpOnly; SameSite=Strict on all session cookies
+[ ] Screen Flow run mode      → Set to User Context for all guest-accessible flows
+[ ] Login retURL              → Validate against domain allowlist before redirecting
+```
+
 ---
 
 ## FIX-10 · Shared GuestGuard Apex Utility Class
@@ -479,6 +492,194 @@ private class GuestGuardTest {
 
 ---
 
+---
+
+## FIX-11 · Missing HTTP Security Headers (HIGH / MEDIUM)
+
+**Finding:** HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and Permissions-Policy headers are absent from all responses.  
+**OWASP:** `API8:2023` — Security Misconfiguration
+
+### Add via Experience Cloud HTTP Response Headers
+
+1. **Setup → Security → HTTP Response Headers**
+2. Add each header below:
+
+| Header | Value |
+|---|---|
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` |
+| `X-Frame-Options` | `SAMEORIGIN` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` |
+
+### Add via CDN/WAF (recommended for HSTS)
+
+```nginx
+# Nginx example
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+```
+
+### Test assertion
+
+```bash
+# Verify headers are present
+curl -sI https://philipsb2c--b2cpartial.sandbox.my.site.com/producttesterprogram | grep -iE "strict-transport|x-frame|x-content|referrer"
+```
+
+---
+
+## FIX-12 · Insecure Session Cookie Flags (MEDIUM)
+
+**Finding:** Session cookies are missing `HttpOnly`, `Secure`, and/or `SameSite=Strict` attributes.  
+**OWASP:** `API2:2023` — Broken Authentication
+
+### Salesforce Setup (declarative)
+
+1. **Setup → Session Settings**
+2. Enable ✅ **"Lock sessions to the IP address from which they originated"**
+3. Enable ✅ **"Use POST requests for cross-site form submissions"** (CSRF mitigation)
+4. Set **Session Timeout** to 30 minutes or less for guest sessions
+
+### Apex — Set secure flags on any custom cookies
+
+```apex
+// BEFORE — insecure custom cookie
+Cookie insecureCookie = new Cookie('myToken', tokenValue, null, -1, false);
+ApexPages.currentPage().setCookies(new Cookie[] { insecureCookie });
+
+// AFTER — all security flags set
+Cookie secureCookie = new Cookie(
+    'myToken',
+    tokenValue,
+    null,       // path — set to '/' or your site prefix
+    -1,         // maxAge — -1 = session cookie
+    true        // isSecure = true
+);
+// Note: Apex does not expose HttpOnly/SameSite setters directly.
+// Use a Visualforce controller or set cookies via CDN/WAF instead.
+ApexPages.currentPage().setCookies(new Cookie[] { secureCookie });
+```
+
+### Test assertion
+
+```bash
+curl -sI https://philipsb2c--b2cpartial.sandbox.my.site.com/producttesterprogram \
+  | grep -i "set-cookie" \
+  | grep -iE "httponly|samesite|secure"
+# All session cookie lines should contain: Secure; HttpOnly; SameSite=Strict
+```
+
+---
+
+## FIX-13 · Lightning Screen Flow Guest Access (MEDIUM)
+
+**Finding:** `FlowController/getFlowMetadata` accessible without authentication. Screen Flows running in system context may perform DML as guest users.  
+**OWASP:** `API5:2023` — Broken Function Level Authorization
+
+### Salesforce Setup (declarative)
+
+1. **Setup → Flows → [each flow used on guest pages]**
+2. Click **Edit** → **Run Settings**
+3. Set **Run Flow As** → **User or System Context — Default** (not System Context — Without Sharing)
+4. In **Experience Cloud site → Administration → Flows**, review which flows are exposed to guest users
+
+### Apex — Guard any Apex method invoked by guest-accessible Flows
+
+```apex
+// BEFORE — Flow invokes this Apex action without auth check
+@InvocableMethod(label='Create Case' description='Creates a support case')
+public static List<Id> createCase(List<CaseInput> inputs) {
+    // No guest check!
+    Case c = new Case(Subject = inputs[0].subject);
+    insert c;
+    return new List<Id>{ c.Id };
+}
+
+// AFTER — explicit guest rejection
+@InvocableMethod(label='Create Case' description='Creates a support case')
+public static List<Id> createCase(List<CaseInput> inputs) {
+    if (UserInfo.getUserType() == 'Guest') {
+        throw new AuraHandledException('Unauthenticated case creation is not permitted.');
+    }
+    Case c = new Case(Subject = inputs[0].subject);
+    insert c;
+    return new List<Id>{ c.Id };
+}
+```
+
+### Test assertion
+
+```apex
+@IsTest
+static void guestCannotInvokeFlow() {
+    User guestUser = [SELECT Id FROM User WHERE UserType = 'Guest' LIMIT 1];
+    System.runAs(guestUser) {
+        try {
+            FlowController.createCase(new List<CaseInput>{ new CaseInput() });
+            System.assert(false, 'Should have thrown');
+        } catch (AuraHandledException e) {
+            System.assert(true, 'Guest blocked correctly');
+        }
+    }
+}
+```
+
+---
+
+## FIX-14 · Open Redirect via Login retURL (MEDIUM)
+
+**Finding:** The login endpoint accepts arbitrary external URLs via the `retURL` parameter and redirects to them, enabling phishing via legitimate-looking Salesforce links.  
+**OWASP:** `API8:2023` — Security Misconfiguration
+
+### Salesforce Setup
+
+1. **Setup → My Domain** → Verify your domain is registered (limits redirect scope)
+2. **Setup → Session Settings** → Enable **"Require HttpOnly attribute"** for session cookies
+3. Add a **Login Flow** to intercept and validate `retURL` before redirection
+
+### Apex Login Flow — Validate retURL allowlist
+
+```apex
+public class ReturnUrlValidator {
+
+    private static final Set<String> ALLOWED_HOSTS = new Set<String>{
+        'philipsb2c--b2cpartial.sandbox.my.site.com',
+        'www.philips.com'
+    };
+
+    @AuraEnabled
+    public static String validateReturnUrl(String returnUrl) {
+        if (String.isBlank(returnUrl)) {
+            return '/'; // safe default
+        }
+        try {
+            URL parsed = new URL(returnUrl);
+            if (ALLOWED_HOSTS.contains(parsed.getHost())) {
+                return returnUrl;
+            }
+        } catch (Exception e) {
+            // Malformed URL — reject
+        }
+        return '/'; // redirect to home if URL is external
+    }
+}
+```
+
+### Test assertion
+
+```bash
+# Should NOT redirect to evil.example.com
+curl -sI "https://philipsb2c--b2cpartial.sandbox.my.site.com/producttesterprogram/login?retURL=https://evil.example.com" \
+  | grep -i location
+# Expected: Location should point to /login or /home, NOT evil.example.com
+```
+
+---
+
 ## Verification Checklist — Post-Fix
 
 Run these checks after applying fixes:
@@ -489,6 +690,10 @@ Run these checks after applying fixes:
 [ ] Apex test suite: all GuestGuardTest methods pass
 [ ] Manual: open /recordlist/Topic/Default in incognito — verify redirect to login
 [ ] SOAP: attempt login via /services/Soap/u/ — verify IP restriction fires
+[ ] Headers: curl -sI <site> | grep -iE "strict-transport|x-frame|x-content" shows all headers
+[ ] Cookies: curl -sI <site> | grep -i set-cookie — all lines contain Secure; HttpOnly; SameSite
+[ ] Flow: verify FlowController probe returns ACCESS DENIED for guest session
+[ ] Redirect: curl retURL=https://evil.example.com — confirm redirect stays on own domain
 [ ] Re-run aura-inspector: risk score should drop below 30
 ```
 
@@ -496,6 +701,7 @@ Run these checks after applying fixes:
 
 ```powershell
 .venv\Scripts\python.exe src/aura_cli.py `
+    -U phani `
     -u "https://philipsb2c--b2cpartial.sandbox.my.site.com/producttesterprogram" `
     --app /s `
     --aura /s/sfsites/aura `

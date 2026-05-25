@@ -162,8 +162,8 @@
   <div class="grid-4" style="margin-bottom:20px; margin-top:4px;">
     <div class="kpi critical">
       <span class="label">⚠️ Risk Score</span>
-      <span class="value" style="color:var(--high)">62<small style="font-size:18px;color:var(--muted)">/100</small></span>
-      <span class="sub">Medium-High</span>
+      <span class="value" style="color:var(--high)">78<small style="font-size:18px;color:var(--muted)">/100</small></span>
+      <span class="sub">High Risk</span>
     </div>
     <div class="kpi high">
       <span class="label">📦 Exposed Objects</span>
@@ -175,10 +175,10 @@
       <span class="value">2,201</span>
       <span class="sub">Standard API (guest session)</span>
     </div>
-    <div class="kpi good">
-      <span class="label">🛡️ Controls Passed</span>
-      <span class="value">3</span>
-      <span class="sub">No self-reg · No REST · No custom controllers</span>
+    <div class="kpi high">
+      <span class="label">🔒 Infra Findings</span>
+      <span class="value">8</span>
+      <span class="sub">Headers · Cookies · Flow · Redirect</span>
     </div>
   </div>
 
@@ -191,9 +191,9 @@
         Overall Risk Assessment
       </div>
       <div class="gauge-wrap">
-        <div class="gauge-score">62</div>
-        <div class="gauge-label">Medium-High Risk</div>
-        <div class="risk-bar"><div class="risk-needle"></div></div>
+        <div class="gauge-score">78</div>
+        <div class="gauge-label">High Risk</div>
+        <div class="risk-bar"><div class="risk-needle" style="left:78%"></div></div>
         <div style="display:flex;justify-content:space-between;width:100%;font-size:10px;color:var(--muted);margin-top:4px;">
           <span>0 — Low</span><span>50 — Med</span><span>75 — High</span><span>100 — Critical</span>
         </div>
@@ -213,6 +213,22 @@
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="font-size:12px;color:var(--muted);">SOAP API Enabled</span>
+          <span class="badge medium">MEDIUM</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--muted);">Missing Security Headers</span>
+          <span class="badge high">HIGH</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--muted);">Insecure Cookie Flags</span>
+          <span class="badge medium">MEDIUM</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--muted);">Screen Flow Guest Access</span>
+          <span class="badge medium">MEDIUM</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--muted);">Open Redirect (retURL)</span>
           <span class="badge medium">MEDIUM</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -460,6 +476,12 @@
           <tr><td>🌐 REST API</td><td>❌ Blocked (guest)</td><td><span class="badge low">✅ OK</span></td></tr>
           <tr><td>👤 Self-Registration</td><td>❌ Disabled</td><td><span class="badge low">✅ OK</span></td></tr>
           <tr><td>🧩 Custom Apex Controllers</td><td>✅ None found</td><td><span class="badge low">✅ OK</span></td></tr>
+          <tr><td>🔒 HSTS Header</td><td>❌ Missing</td><td><span class="badge high">HIGH</span></td></tr>
+          <tr><td>🛡️ Content-Security-Policy</td><td>⚠️ Weak (wildcards)</td><td><span class="badge medium">MEDIUM</span></td></tr>
+          <tr><td>🖼️ X-Frame-Options</td><td>❌ Missing</td><td><span class="badge medium">MEDIUM</span></td></tr>
+          <tr><td>🍪 Cookie Secure+HttpOnly+SameSite</td><td>❌ Incomplete</td><td><span class="badge medium">MEDIUM</span></td></tr>
+          <tr><td>⚡ Screen Flow (guest)</td><td>⚠️ Accessible</td><td><span class="badge medium">MEDIUM</span></td></tr>
+          <tr><td>↪️ Open Redirect (retURL)</td><td>⚠️ Unvalidated</td><td><span class="badge medium">MEDIUM</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -502,6 +524,87 @@
       <span class="badge medium">📦 3rd-party analytics: GTM, AppDynamics, BazaarVoice</span>
       <span class="badge low">✅ 8 internal Philips/Salesforce origins</span>
     </div>
+  </div>
+
+  <!-- ── Infrastructure & HTTP Security findings ── -->
+  <h2 class="section"><span class="icon">🔒</span> Infrastructure &amp; HTTP Security</h2>
+  <div class="card" style="padding:0; overflow:hidden;">
+    <table>
+      <thead>
+        <tr>
+          <th>Check</th>
+          <th>Status</th>
+          <th>Risk</th>
+          <th>OWASP</th>
+          <th>Impact</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="obj-high">
+          <td>🔐 <strong>Strict-Transport-Security (HSTS)</strong></td>
+          <td>❌ Missing</td>
+          <td><span class="badge high">HIGH</span></td>
+          <td><code>API8:2023</code></td>
+          <td>Site can be loaded over plain HTTP. Enables MITM and session hijacking on insecure networks.</td>
+        </tr>
+        <tr class="obj-medium">
+          <td>🛡️ <strong>Content-Security-Policy</strong></td>
+          <td>⚠️ Weak — wildcards present</td>
+          <td><span class="badge medium">MEDIUM</span></td>
+          <td><code>API8:2023</code></td>
+          <td><code>*.adobe.io</code>, <code>*.appdynamics.com</code> and 4 other wildcards negate XSS protection via supply-chain attack.</td>
+        </tr>
+        <tr class="obj-medium">
+          <td>🖼️ <strong>X-Frame-Options</strong></td>
+          <td>❌ Missing</td>
+          <td><span class="badge medium">MEDIUM</span></td>
+          <td><code>API8:2023</code></td>
+          <td>Site embeddable in iframes. Enables clickjacking attacks on login and form pages.</td>
+        </tr>
+        <tr class="obj-medium">
+          <td>📄 <strong>X-Content-Type-Options</strong></td>
+          <td>❌ Missing</td>
+          <td><span class="badge low">LOW</span></td>
+          <td><code>API8:2023</code></td>
+          <td>Browser may MIME-sniff responses and execute unexpected content as scripts.</td>
+        </tr>
+        <tr class="obj-low">
+          <td>🔗 <strong>Referrer-Policy</strong></td>
+          <td>❌ Missing</td>
+          <td><span class="badge low">LOW</span></td>
+          <td><code>API8:2023</code></td>
+          <td>Full URL (including tokens in query strings) leaked to third-party analytics origins.</td>
+        </tr>
+        <tr class="obj-low">
+          <td>⚙️ <strong>Permissions-Policy</strong></td>
+          <td>❌ Missing</td>
+          <td><span class="badge low">LOW</span></td>
+          <td><code>API8:2023</code></td>
+          <td>Browser features (camera, microphone, geolocation) unrestricted. Raises GDPR compliance risk.</td>
+        </tr>
+        <tr class="obj-medium">
+          <td>🍪 <strong>Session Cookie Flags</strong></td>
+          <td>⚠️ HttpOnly / SameSite absent on some cookies</td>
+          <td><span class="badge medium">MEDIUM</span></td>
+          <td><code>API2:2023</code></td>
+          <td>Session cookies without HttpOnly are readable via JavaScript (XSS theft). Missing SameSite enables CSRF.</td>
+        </tr>
+        <tr class="obj-medium">
+          <td>⚡ <strong>Screen Flow Guest Access</strong></td>
+          <td>⚠️ FlowController accessible</td>
+          <td><span class="badge medium">MEDIUM</span></td>
+          <td><code>API5:2023</code></td>
+          <td>Lightning Screen Flows running in system context can DML-create records on behalf of guest users.</td>
+        </tr>
+        <tr class="obj-medium">
+          <td>↪️ <strong>Open Redirect — login retURL</strong></td>
+          <td>⚠️ Unvalidated external redirect</td>
+          <td><span class="badge medium">MEDIUM</span></td>
+          <td><code>API8:2023</code></td>
+          <td>Login endpoint accepts arbitrary external <code>retURL</code> values. Enables phishing links that begin on the legitimate Salesforce domain.</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <!-- ── Recommendations ── -->
@@ -588,6 +691,46 @@
       </div>
     </div>
 
+    <div class="rec high">
+      <div class="rec-icon">🔐</div>
+      <div>
+        <h4>HIGH — Add HTTP Strict-Transport-Security (HSTS) Header</h4>
+        <p>The site does not send an HSTS header, allowing it to be loaded over HTTP. Add <code>Strict-Transport-Security: max-age=31536000; includeSubDomains</code> via the CDN/WAF in front of the Salesforce domain, or via a Custom Header in Experience Cloud <strong>Security Settings</strong>.</p>
+      </div>
+    </div>
+
+    <div class="rec medium">
+      <div class="rec-icon">🖼️</div>
+      <div>
+        <h4>MEDIUM — Add X-Frame-Options and Referrer-Policy Headers</h4>
+        <p>Missing <code>X-Frame-Options: SAMEORIGIN</code> allows clickjacking on login/form pages. Missing <code>Referrer-Policy</code> leaks full URLs to analytics providers. Add both in Setup → Security → <strong>HTTP Response Headers</strong> or via CDN rules.</p>
+      </div>
+    </div>
+
+    <div class="rec medium">
+      <div class="rec-icon">🍪</div>
+      <div>
+        <h4>MEDIUM — Enforce Secure Cookie Flags</h4>
+        <p>Session cookies missing <code>HttpOnly</code> or <code>SameSite=Strict</code> expose users to XSS token theft and CSRF. In Salesforce Setup → <strong>Session Settings</strong>, enable <em>Lock sessions to the IP address from which they originated</em> and ensure all custom cookies set by LWC/Apex are created with <code>HttpOnly; Secure; SameSite=Strict</code>.</p>
+      </div>
+    </div>
+
+    <div class="rec medium">
+      <div class="rec-icon">⚡</div>
+      <div>
+        <h4>MEDIUM — Restrict Lightning Screen Flow Guest Access</h4>
+        <p><code>FlowController/getFlowMetadata</code> is accessible to unauthenticated users. Audit all Screen Flows exposed on guest pages for DML operations running in system context. Set Flow Run Mode to <strong>Default (User Context)</strong> and add a Guest user check at the first decision element.</p>
+      </div>
+    </div>
+
+    <div class="rec medium">
+      <div class="rec-icon">↪️</div>
+      <div>
+        <h4>MEDIUM — Fix Open Redirect via login retURL</h4>
+        <p>The <code>/login?retURL=</code> parameter accepts arbitrary external URLs. Validate <code>retURL</code> against an allowlist of your own domain(s) before redirecting. Reject any value that does not start with your Salesforce site origin to prevent phishing via seemingly-legitimate links.</p>
+      </div>
+    </div>
+
   </div>
 
   <!-- ── OWASP Mapping ── -->
@@ -605,6 +748,12 @@
           <td><span class="badge high">HIGH</span></td>
         </tr>
         <tr>
+          <td><code>API2:2023</code></td>
+          <td>Broken Authentication</td>
+          <td>Session cookies missing HttpOnly / SameSite flags — theft via XSS / CSRF possible</td>
+          <td><span class="badge medium">MEDIUM</span></td>
+        </tr>
+        <tr>
           <td><code>API3:2023</code></td>
           <td>Broken Object Property Level Authorization</td>
           <td>User fields (email, name) readable; EntityDefinition schema exposed</td>
@@ -613,14 +762,14 @@
         <tr>
           <td><code>API5:2023</code></td>
           <td>Broken Function Level Authorization</td>
-          <td>GraphQL uiapi active for guest; SOAP API enabled without guest restriction</td>
+          <td>GraphQL uiapi active for guest; Screen Flow FlowController accessible without auth</td>
           <td><span class="badge medium">MEDIUM</span></td>
         </tr>
         <tr>
           <td><code>API8:2023</code></td>
           <td>Security Misconfiguration</td>
-          <td>6 wildcard CSP entries; SOAP API enabled; REST API (partially mitigated)</td>
-          <td><span class="badge medium">MEDIUM</span></td>
+          <td>HSTS / X-Frame-Options / X-Content-Type-Options missing; SOAP API enabled; open redirect via retURL; weak CSP wildcards</td>
+          <td><span class="badge high">HIGH</span></td>
         </tr>
         <tr>
           <td><code>API9:2023</code></td>
@@ -650,10 +799,10 @@ Chart.defaults.borderColor = '#30363d';
 new Chart(document.getElementById('statsChart'), {
   type: 'doughnut',
   data: {
-    labels: ['Standard API Objects', 'GraphQL-only Objects', 'Controls Passed'],
+    labels: ['Standard API Objects', 'GraphQL-only Objects', 'Infra Findings', 'Controls Passed'],
     datasets: [{
-      data: [7, 12, 3],
-      backgroundColor: ['#fa8c16', '#58a6ff', '#52c41a'],
+      data: [7, 12, 8, 3],
+      backgroundColor: ['#fa8c16', '#58a6ff', '#ff4d4f', '#52c41a'],
       borderWidth: 2,
       borderColor: '#161b22',
       hoverOffset: 6
