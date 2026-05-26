@@ -219,9 +219,13 @@ class SalesforceOAuthHandler:
 	def _exchange_code(self, code: str, redirect_uri: str = None, code_verifier: str = None) -> dict:
 		"""POST to /services/oauth2/token and return the response payload.
 
+		Uses the PKCE Web Server Flow (no client_secret).  The Connected App in
+		Salesforce must have "Require Secret for Web Server Flow" unchecked, or
+		"Require PKCE" enabled.  This is the same approach used by the Salesforce
+		CLI `sf org login web` command.
+
 		Pass *code_verifier* (the value stored during :meth:`get_authorization_url`)
-		when the Connected App requires PKCE — Salesforce verifies it against the
-		``code_challenge`` sent in the original authorization request.
+		so Salesforce can verify the PKCE challenge.
 		"""
 		payload = {
 			'grant_type': 'authorization_code',
@@ -229,8 +233,8 @@ class SalesforceOAuthHandler:
 			'redirect_uri': redirect_uri or REDIRECT_URI,
 			'client_id': self.client_id,
 		}
-		if self.client_secret:
-			payload['client_secret'] = self.client_secret
+		# client_secret is intentionally omitted — PKCE code_verifier is the
+		# security credential.  Never include client_secret in the exchange.
 		if code_verifier:
 			payload['code_verifier'] = code_verifier
 

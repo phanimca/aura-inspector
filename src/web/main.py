@@ -183,7 +183,7 @@ def _seed_default_connected_app(db) -> None:
 	app = ConnectedApp(
 		name='Default (from environment)',
 		client_id=_SF_CLIENT_ID,
-		client_secret=_SF_CLIENT_SECRET or None,
+		# No client_secret — PKCE-only flow; secret is never stored.
 		login_url=_SF_INSTANCE_URL or 'https://login.salesforce.com',
 		app_base_url=None,
 	)
@@ -418,7 +418,6 @@ def connected_apps_create(
 	request: Request,
 	name: str = Form(...),
 	client_id: str = Form(...),
-	client_secret: str = Form(''),
 	login_url: str = Form('https://login.salesforce.com'),
 	login_url_custom: str = Form(''),
 	app_base_url: str = Form(''),
@@ -432,7 +431,7 @@ def connected_apps_create(
 	ca = ConnectedApp(
 		name=name.strip(),
 		client_id=client_id.strip(),
-		client_secret=client_secret.strip() or None,
+		# No client_secret — PKCE-only flow.
 		login_url=resolved_login,
 		app_base_url=app_base_url.strip().rstrip('/') or None,
 	)
@@ -447,7 +446,6 @@ def connected_apps_edit(
 	app_id: int,
 	name: str = Form(...),
 	client_id: str = Form(...),
-	client_secret: str = Form(''),
 	login_url: str = Form('https://login.salesforce.com'),
 	login_url_custom: str = Form(''),
 	app_base_url: str = Form(''),
@@ -463,8 +461,7 @@ def connected_apps_edit(
 	resolved_login = resolved_login.rstrip('/') or 'https://login.salesforce.com'
 	ca.name = name.strip()
 	ca.client_id = client_id.strip()
-	if client_secret.strip():
-		ca.client_secret = client_secret.strip()
+	# client_secret is never stored — PKCE-only flow.
 	ca.login_url = resolved_login
 	ca.app_base_url = app_base_url.strip().rstrip('/') or None
 	db.commit()
@@ -554,8 +551,8 @@ def sf_oauth_popup(
 
 	# Resolve the connected app credentials to use for this OAuth flow.
 	# Priority: DB record (by connected_app_id) → env vars fallback.
+	# Only client_id and login_url are needed — PKCE replaces client_secret.
 	ca_client_id: str = ''
-	ca_client_secret: str | None = None
 	ca_login_url: str = sf_login_url.strip().rstrip('/') or 'https://login.salesforce.com'
 	ca_app_base_url: str = APP_BASE_URL
 
@@ -563,7 +560,6 @@ def sf_oauth_popup(
 		ca = db.query(ConnectedApp).filter(ConnectedApp.id == connected_app_id).first()
 		if ca:
 			ca_client_id = ca.client_id
-			ca_client_secret = ca.client_secret
 			ca_login_url = ca.login_url.rstrip('/')
 			ca_app_base_url = (ca.app_base_url or APP_BASE_URL).rstrip('/')
 		else:
@@ -574,7 +570,6 @@ def sf_oauth_popup(
 			)
 	elif _SF_CLIENT_ID:
 		ca_client_id = _SF_CLIENT_ID
-		ca_client_secret = _SF_CLIENT_SECRET or None
 	else:
 		return _popup_html(
 			'window.opener&&window.opener.postMessage('
@@ -602,7 +597,7 @@ def sf_oauth_popup(
 		}),
 		sf_instance_url=ca_login_url,
 		sf_client_id=ca_client_id,
-		sf_client_secret=ca_client_secret,
+		# sf_client_secret intentionally omitted — PKCE-only flow.
 		redirect_uri=web_redirect_uri,
 		code_verifier=code_verifier,
 	)
@@ -612,7 +607,6 @@ def sf_oauth_popup(
 	handler = SalesforceOAuthHandler(
 		instance_url=ca_login_url,
 		client_id=ca_client_id,
-		client_secret=ca_client_secret,
 	)
 	auth_url = handler.get_authorization_url(
 		redirect_uri=web_redirect_uri,
@@ -673,7 +667,7 @@ def sf_oauth_start(
 		}),
 		sf_instance_url=sf_instance_url,
 		sf_client_id=_SF_CLIENT_ID,
-		sf_client_secret=_SF_CLIENT_SECRET or None,
+		# sf_client_secret intentionally omitted — PKCE-only flow.
 		redirect_uri=web_redirect_uri,
 		code_verifier=code_verifier,
 	)
@@ -684,7 +678,6 @@ def sf_oauth_start(
 	handler = SalesforceOAuthHandler(
 		instance_url=sf_instance_url,
 		client_id=_SF_CLIENT_ID,
-		client_secret=_SF_CLIENT_SECRET or None,
 	)
 	auth_url = handler.get_authorization_url(
 		redirect_uri=web_redirect_uri,
@@ -796,7 +789,7 @@ def sf_oauth_callback(
 		handler = SalesforceOAuthHandler(
 			instance_url=oauth_state.sf_instance_url,
 			client_id=oauth_state.sf_client_id,
-			client_secret=oauth_state.sf_client_secret,
+			# No client_secret — PKCE code_verifier is the security credential.
 		)
 		token_data = handler._exchange_code(
 			code=code,

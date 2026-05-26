@@ -154,10 +154,12 @@ class OAuthState(Base):
 	"""Temporary record that links an in-flight Salesforce OAuth flow to a pending scan.
 
 	Lifecycle:
-	  1. Created by POST /auth/sf/start (stores scan params + SF credentials).
-	  2. Passed as `state` to Salesforce's /authorize URL.
+	  1. Created by GET /auth/sf/popup or POST /auth/sf/start.
+	  2. The `id` UUID is passed as the OAuth `state` parameter to Salesforce.
 	  3. Consumed (deleted) by GET /auth/sf/callback after the code is exchanged.
 	  4. Rows older than 10 minutes can be considered stale and garbage-collected.
+
+	Security: The PKCE `code_verifier` is the secret — no client_secret is stored.
 	"""
 	__tablename__ = 'oauth_states'
 	id = Column(String(64), primary_key=True)          # UUID4 — also the OAuth `state` param
@@ -166,22 +168,24 @@ class OAuthState(Base):
 	scan_params = Column(Text, nullable=False)           # JSON: target_url, app_path, ...
 	sf_instance_url = Column(String(500), nullable=False)
 	sf_client_id = Column(String(500), nullable=False)
-	sf_client_secret = Column(String(500))               # Optional — only for web-server flow
+	sf_client_secret = Column(String(500))               # DEPRECATED — kept for compat, never written
 	redirect_uri = Column(String(500), nullable=False)   # Must match token exchange exactly
-	code_verifier = Column(String(128))                  # PKCE verifier — required when Connected App enforces PKCE
+	code_verifier = Column(String(128))                  # PKCE verifier — the security credential
 
 
 class ConnectedApp(Base):
 	"""A Salesforce Connected App / External Client App registered by the admin.
 
-	Each record stores the OAuth credentials needed to initiate an Authorization
-	Code flow for a specific Salesforce org.  The admin creates one record per
-	org / environment they want to scan with OAuth.
+	Uses the OAuth 2.0 Web Server Flow with PKCE (S256) — no client secret is
+	required or stored.  The Connected App in Salesforce must have
+	"Require Secret for Web Server Flow" unchecked, or "Require PKCE" enabled.
+	This mirrors how the Salesforce CLI `sf org login web` command works.
 
 	Fields:
 	  name         — human-readable label (e.g. "Acme Production", "Sandbox")
-	  client_id    — Consumer Key from the Connected App definition
-	  client_secret— Consumer Secret (optional for PKCE-only flows)
+	  client_id    — Consumer Key from the Connected App definition (public identifier)
+	  client_secret— DEPRECATED / UNUSED.  Column kept for schema compatibility;
+	                 never written or read.  See _run_migrations() for the wipe.
 	  login_url    — Salesforce OAuth base URL (login.salesforce.com, test.salesforce.com, or custom)
 	  app_base_url — Override for the OAuth redirect_uri base; if blank the global APP_BASE_URL is used
 	"""
@@ -189,7 +193,7 @@ class ConnectedApp(Base):
 	id = Column(Integer, primary_key=True, index=True)
 	name = Column(String(200), nullable=False)
 	client_id = Column(String(500), nullable=False)
-	client_secret = Column(String(500))
+	client_secret = Column(String(500))  # DEPRECATED — kept for compat, never used
 	login_url = Column(String(500), default='https://login.salesforce.com', nullable=False)
 	app_base_url = Column(String(500))   # e.g. https://myapp.vercel.app — overrides global for redirect_uri
 	created_at = Column(DateTime, default=datetime.utcnow)
@@ -244,8 +248,25 @@ def _run_migrations() -> None:
 				logger.info('Migration applied: added oauth_states.code_verifier')
 			except Exception as exc:
 				logger.debug('Migration skipped for oauth_states.code_verifier: %s', exc)
-	# connected_apps — new table; created by create_all, no ALTERs needed yet.
-	# Logged here for observability.
+	# Security: wipe any client_secret values that were stored under the old design.
+	# The new PKCE-only flow never writes client_secret; these columns exist for
+	# schema compatibility only.
 	if 'connected_apps' in inspector.get_table_names():
-		logger.debug('connected_apps table present')
+		try:
+			with engine.begin() as conn:
+				result = conn.execute(text(
+					"UPDATE connected_apps SET client_secret = NULL WHERE client_secret IS NOT NULL"
+				))
+			if result.rowcount:
+				logger.info('Security migration: cleared %d stored client_secret(s) from connected_apps', result.rowcount)
+		except Exception as exc:
+			logger.debug('client_secret wipe skipped: %s', exc)
+	if 'oauth_states' in inspector.get_table_names():
+		try:
+			with engine.begin() as conn:
+				conn.execute(text(
+					"UPDATE oauth_states SET sf_client_secret = NULL WHERE sf_client_secret IS NOT NULL"
+				))
+		except Exception as exc:
+			logger.debug('sf_client_secret wipe skipped: %s', exc)
 

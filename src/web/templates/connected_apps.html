@@ -5,7 +5,6 @@
 <style>
 .ca-card { transition: border-color .2s; }
 .ca-card:hover { border-color: #58a6ff66; }
-.secret-mask { font-family: monospace; letter-spacing: .1em; color: #8b949e; }
 </style>
 {% endblock %}
 
@@ -52,6 +51,15 @@
       <code>OAuth 2.0 with PKCE</code>, callback URL = <code>{{ app_base_url }}/auth/sf/callback</code>,
       scopes: <code>api</code>, <code>web</code>, <code>openid</code>.
     </p>
+    <p class="mb-1 small" style="color:#8b949e;">
+      <i class="bi bi-shield-lock-fill me-1" style="color:#3fb950;"></i>
+      <strong style="color:#3fb950;">PKCE-only — no secret required.</strong>
+      This tool uses the <strong style="color:#e6edf3;">OAuth 2.0 Authorization Code + PKCE (S256)</strong> flow,
+      the same approach used by the Salesforce CLI <code>sf org login web</code> command.
+      <strong style="color:#e6edf3;">No Consumer Secret is stored</strong> — the PKCE code verifier is
+      the security credential. In your Connected App, uncheck
+      <em>"Require Secret for Web Server Flow"</em> (or enable <em>"Require PKCE"</em>).
+    </p>
     <p class="mb-0 small" style="color:#8b949e;">
       <strong style="color:#d29922;">Spring '26 note:</strong>
       External Client Apps (the new type) are org-scoped — create one per org you scan.
@@ -77,14 +85,6 @@
             <div class="col-12">
               <span class="fw-semibold" style="color:#e6edf3;">Client ID: </span>
               <code style="color:#c9d1d9;word-break:break-all;">{{ ca.client_id }}</code>
-            </div>
-            <div class="col-12">
-              <span class="fw-semibold" style="color:#e6edf3;">Client Secret: </span>
-              {% if ca.client_secret %}
-              <span class="secret-mask">••••••••{{ ca.client_secret[-4:] }}</span>
-              {% else %}
-              <span class="text-muted">— (PKCE only)</span>
-              {% endif %}
             </div>
             {% if ca.app_base_url %}
             <div class="col-12">
@@ -206,13 +206,6 @@ function _formHtml(vals) {
              style="font-family:monospace;font-size:.82rem;" placeholder="3MVG9…"
              value="${_esc(vals.client_id || '')}"/>
     </div>
-    <div class="mb-3">
-      <label class="form-label small fw-semibold">Consumer Secret (Client Secret)</label>
-      <input type="password" name="client_secret" class="form-control"
-             style="font-family:monospace;font-size:.82rem;" autocomplete="new-password"
-             placeholder="${vals._editing ? 'Leave blank to keep current secret' : 'Optional — leave blank for PKCE-only flow'}"/>
-      <div class="form-text" style="color:#8b949e;">Leave blank to use PKCE without a client secret.</div>
-    </div>
     <div class="mb-1">
       <label class="form-label small fw-semibold">Callback Base URL <span class="text-muted fw-normal">(optional)</span></label>
       <input type="url" name="app_base_url" class="form-control"
@@ -237,14 +230,14 @@ function caToggleCustom(sel, customId) {
 // Populate the Add modal every time it opens (fresh form).
 document.getElementById('addModal').addEventListener('show.bs.modal', function() {
   document.getElementById('addModalBody').innerHTML = _formHtml({
-    _uid: 'add', _editing: false, _app_base_url: {{ app_base_url | tojson }},
+    _uid: 'add', _app_base_url: {{ app_base_url | tojson }},
   });
 });
 
 function openEditModal(id, name, clientId, loginUrl, appBaseUrl) {
   document.getElementById('editForm').action = '/connected-apps/' + id + '/edit';
   document.getElementById('editModalBody').innerHTML = _formHtml({
-    _uid: 'edit', _editing: true, name, client_id: clientId,
+    _uid: 'edit', name, client_id: clientId,
     login_url: loginUrl, app_base_url: appBaseUrl,
     _app_base_url: {{ app_base_url | tojson }},
   });
