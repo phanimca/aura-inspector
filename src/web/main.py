@@ -949,6 +949,47 @@ def report(scan_id: int, request: Request, db: Session = Depends(get_db)):
 		for f in findings
 	}
 
+	# ── Risk score ──────────────────────────────────────────────────────────
+	# Use AI-provided score when available; otherwise compute from finding severities.
+	_ai_score = (scan.ai_analysis.risk_score if scan.ai_analysis else 0) or 0
+	_sev_weight = {'critical': 25, 'high': 15, 'medium': 7, 'low': 3, 'info': 0}
+	_computed_score = min(sum(_sev_weight.get(f.severity, 0) for f in findings), 100)
+	if counts['critical']:
+		_computed_score = max(_computed_score, 75)
+	elif counts['high']:
+		_computed_score = max(_computed_score, 50)
+	elif counts['medium']:
+		_computed_score = max(_computed_score, 30)
+	risk_score: int = _ai_score if _ai_score > 0 else _computed_score
+	risk_label: str = (
+		'CRITICAL' if risk_score >= 80 else
+		'HIGH'     if risk_score >= 60 else
+		'MEDIUM'   if risk_score >= 40 else
+		'LOW'
+	)
+
+	# ── Affected Salesforce objects aggregation ──────────────────────────────
+	# Aggregate all affected_objects lists across findings; promote to highest severity.
+	_sev_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3, 'info': 4}
+	_obj_map: dict[str, dict] = {}
+	for _f in findings:
+		for _obj in (_f.affected_objects or []):
+			if _obj not in _obj_map:
+				_obj_map[_obj] = {'severity': _f.severity, 'finding_titles': [_f.title]}
+			else:
+				_e = _obj_map[_obj]
+				if _sev_order.get(_f.severity, 4) < _sev_order.get(_e['severity'], 4):
+					_e['severity'] = _f.severity
+				if _f.title not in _e['finding_titles']:
+					_e['finding_titles'].append(_f.title)
+	affected_objects_list = sorted(
+		[{'name': k, **v} for k, v in _obj_map.items()],
+		key=lambda x: _sev_order.get(x['severity'], 5),
+	)
+
+	# Unique scanner modules that contributed findings
+	scanner_names: list[str] = sorted({f.scanner for f in findings if f.scanner})
+
 	return templates.TemplateResponse(request, 'report.html', _ctx(
 		user,
 		scan=scan,
@@ -957,6 +998,10 @@ def report(scan_id: int, request: Request, db: Session = Depends(get_db)):
 		remediation_sections=remediation_sections,
 		remediation_by_finding=remediation_by_finding,
 		generated_at=datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC'),
+		risk_score=risk_score,
+		risk_label=risk_label,
+		affected_objects_list=affected_objects_list,
+		scanner_names=scanner_names,
 	))
 
 
