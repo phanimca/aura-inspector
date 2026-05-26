@@ -164,7 +164,27 @@ def _execute(scan_id: int, config: dict, stop_event: threading.Event) -> None:
 		except Exception:
 			pass
 
-	except (SystemExit, Exception):
+	except SystemExit:
+		# AuraHelper.get_aura_endpoint() calls exit() when it cannot locate the Aura
+		# endpoint.  Convert that into a friendly, actionable error message rather than
+		# exposing the raw SystemExit traceback.
+		db.rollback()
+		try:
+			scan = db.query(ScanJob).filter(ScanJob.id == scan_id).first()
+			if scan:
+				scan.status = 'failed'
+				scan.error_message = (
+					'Aura endpoint not found at the target URL. '
+					'Verify the URL points to a Salesforce Experience Cloud site. '
+					'If the site uses a custom path, supply explicit App Path and Aura Path values in the scan form.'
+				)
+				scan.progress = 'Failed'
+				scan.completed_at = datetime.utcnow()
+				db.commit()
+		except Exception:
+			pass
+
+	except Exception:
 		db.rollback()
 		try:
 			scan = db.query(ScanJob).filter(ScanJob.id == scan_id).first()
