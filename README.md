@@ -129,6 +129,7 @@ For local development, create a `.env` file at the repo root (it is git-ignored)
 
 | Variable | Example | Description |
 |---|---|---|
+| `DB_LOCATION` | `remote` | Database mode selector: `remote` tries Vercel/Postgres URLs first and falls back to SQLite if unreachable; `local` forces SQLite. |
 | `DATABASE_URL` | `postgresql://user:pass@host/db?sslmode=require` | Persistent storage. Without it the app uses ephemeral SQLite in `/tmp` and **all data is lost on every serverless cold start**. Use [Neon](https://neon.tech) (free tier) or Vercel Postgres. |
 | `SECRET_KEY` | `openssl rand -hex 32` output | Signs JWT session cookies. The built-in default is public and **insecure in production** — always override this. |
 | `APP_BASE_URL` | `https://phani-aura-inspector.vercel.app` | Canonical public URL of the app. Required for Salesforce OAuth — without it the OAuth redirect URI uses the ephemeral Vercel deployment URL and causes a `redirect_uri_mismatch` error on every new deploy. |
@@ -186,6 +187,7 @@ Go to your Vercel project → **Settings → Environment Variables** and add:
 
 ```
 DATABASE_URL          = postgresql://...          (Production + Preview)
+DB_LOCATION           = remote                     (Production + Preview)
 SECRET_KEY            = <random 32-byte hex>      (Production + Preview)
 APP_BASE_URL          = https://<your-alias>.vercel.app  (Production only)
 SF_CLIENT_ID          = <Connected App key>       (Production + Preview)
@@ -201,6 +203,7 @@ After adding variables, redeploy: `vercel --prod --yes`
 
 ```dotenv
 # Required
+DB_LOCATION=local
 DATABASE_URL=sqlite:///./data/aura_inspector.db
 SECRET_KEY=replace-with-a-long-random-string
 APP_BASE_URL=http://localhost:8080

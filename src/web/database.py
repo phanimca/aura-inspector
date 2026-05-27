@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 from sqlalchemy import (
 	Boolean, Column, DateTime, ForeignKey,
-	Integer, JSON, String, Text, create_engine,
+	Integer, JSON, String, Text, create_engine, text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
@@ -46,32 +46,108 @@ _IS_VERCEL: bool = os.environ.get('VERCEL') == '1'
 
 # Resolve the database URL.
 # Priority:
-#   1. DATABASE_URL env var  — must contain a valid scheme (e.g. postgresql://,
-#                               sqlite:///...).  Empty / non-URL values are ignored.
+#   1. DB_LOCATION=local  -> force local SQLite
+#   2. DB_LOCATION=remote -> force remote DB candidates then fallback to local SQLite
+#   3. DB_LOCATION unset  -> auto mode (existing behavior)
+#   4. DATABASE_URL / Vercel Postgres env vars (validated by test connection)
 #   2. /tmp (Vercel)          — ephemeral but always writable on serverless.
 #   3. Local data/ directory  — used when running locally or in Docker.
-_raw_db_url = os.environ.get('DATABASE_URL', '').strip()
-# Some providers (Heroku, Vercel Postgres) emit postgres:// — SQLAlchemy 2.x
-# requires the postgresql:// scheme.  Fix it transparently.
-_raw_db_url = _raw_db_url.replace('postgres://', 'postgresql://', 1) if _raw_db_url.startswith('postgres://') else _raw_db_url
-DATABASE_URL: str = _raw_db_url if '://' in _raw_db_url else ''
 
+_DB_CANDIDATE_ENV_KEYS = (
+	'DATABASE_URL',
+	'POSTGRES_URL',
+	'POSTGRES_URL_NON_POOLING',
+	'POSTGRES_PRISMA_URL',
+	'POSTGRESQL_URL',
+)
+
+
+def _normalize_db_url(raw_url: str) -> str:
+	"""Return a SQLAlchemy-compatible DB URL or empty string when invalid."""
+	if not raw_url:
+		return ''
+	url = raw_url.strip()
+	# Some providers emit postgres://; SQLAlchemy 2.x expects postgresql://
+	if url.startswith('postgres://'):
+		url = url.replace('postgres://', 'postgresql://', 1)
+	return url if '://' in url else ''
+
+
+def _database_url_candidates() -> list[tuple[str, str]]:
+	"""Collect distinct candidate DB URLs from known env vars."""
+	seen: set[str] = set()
+	candidates: list[tuple[str, str]] = []
+	for env_key in _DB_CANDIDATE_ENV_KEYS:
+		candidate = _normalize_db_url(os.environ.get(env_key, ''))
+		if not candidate or candidate in seen:
+			continue
+		seen.add(candidate)
+		candidates.append((candidate, env_key))
+	return candidates
+
+
+def _is_remote_db_reachable(db_url: str) -> bool:
+	"""Attempt a lightweight DB health-check (SELECT 1)."""
+	if db_url.startswith('sqlite'):
+		return True
+	# Keep startup snappy when remote DB is unavailable.
+	connect_args = {'connect_timeout': 5} if db_url.startswith('postgresql://') else {}
+	test_engine = create_engine(db_url, connect_args=connect_args, pool_pre_ping=True)
+	try:
+		with test_engine.connect() as conn:
+			conn.execute(text('SELECT 1'))
+		return True
+	except Exception as exc:
+		logger.warning('Database health-check failed for remote URL: %s', exc)
+		return False
+	finally:
+		test_engine.dispose()
+
+
+def _resolve_local_sqlite_url() -> tuple[str, str, bool]:
+	"""Return local SQLite URL, source label, and ephemeral flag."""
+	if _IS_VERCEL:
+		return 'sqlite:////tmp/aura_inspector.db', 'vercel-/tmp-fallback', True
+	_data_dir = Path(__file__).resolve().parent.parent.parent / 'data'
+	_data_dir.mkdir(exist_ok=True)
+	return f'sqlite:///{_data_dir}/aura_inspector.db', 'local-sqlite-fallback', False
+
+
+DATABASE_URL: str = ''
+_db_source: str = ''
 _USING_EPHEMERAL_SQLITE = False  # flipped below when falling back to /tmp
 
+_db_location = os.environ.get('DB_LOCATION', '').strip().lower()
+if _db_location not in ('', 'local', 'remote'):
+	logger.warning('Invalid DB_LOCATION=%r; expected local or remote. Using auto mode.', _db_location)
+	_db_location = ''
+
+if _db_location == 'local':
+	DATABASE_URL, _db_source, _USING_EPHEMERAL_SQLITE = _resolve_local_sqlite_url()
+else:
+	for _candidate_url, _source in _database_url_candidates():
+		if _db_location == 'remote' and _candidate_url.startswith('sqlite'):
+			continue
+		if _candidate_url.startswith('sqlite'):
+			DATABASE_URL = _candidate_url
+			_db_source = _source
+			break
+		if _is_remote_db_reachable(_candidate_url):
+			DATABASE_URL = _candidate_url
+			_db_source = _source
+			break
+		logger.warning('Configured remote DB from %s is unreachable; trying next fallback.', _source)
+
 if not DATABASE_URL:
+	DATABASE_URL, _db_source, _USING_EPHEMERAL_SQLITE = _resolve_local_sqlite_url()
 	if _IS_VERCEL:
-		DATABASE_URL = 'sqlite:////tmp/aura_inspector.db'
-		_USING_EPHEMERAL_SQLITE = True
 		logger.warning(
 			'No DATABASE_URL set — using ephemeral SQLite at /tmp/aura_inspector.db. '
 			'All data will be lost on container restart. '
 			'Set DATABASE_URL to a PostgreSQL URL (e.g. Neon/Vercel Postgres) for persistence.'
 		)
-	else:
-		_DATA_DIR = Path(__file__).resolve().parent.parent.parent / 'data'
-		_DATA_DIR.mkdir(exist_ok=True)
-		DATABASE_URL = f'sqlite:///{_DATA_DIR}/aura_inspector.db'
 
+logger.info('Database source: %s', _db_source)
 logger.info('Database: %s', DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL)
 
 # SQLite needs check_same_thread=False; PostgreSQL needs pool_pre_ping to
