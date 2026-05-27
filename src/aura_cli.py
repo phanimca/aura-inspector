@@ -409,7 +409,7 @@ def write_records_to_directory(all_records, parent_dir, sub_dir):
 	os.makedirs(path_to_write, exist_ok=True)
 
 	logger.info(f'Writing record information to {path_to_write}')
-	with open(os.path.join(path_to_write, f'summary.txt'), 'w') as f:
+	with open(os.path.join(path_to_write, f'summary.txt'), 'w', encoding='utf-8') as f:
 		f.write(draw_table(all_records))
 
 
@@ -425,8 +425,8 @@ def write_misc_to_directory(obj_to_write, parent_dir, sub_dir='misc', file_name=
 
 	logger.info(f'Writing miscellaneous to {file_to_write}')
 
-	with open(f'{file_to_write}', 'w') as f:
-		json.dump(obj_to_write, f)
+	with open(f'{file_to_write}', 'w', encoding='utf-8') as f:
+		json.dump(obj_to_write, f, ensure_ascii=False)
 
 def draw_table(records):
 	record_count = [
@@ -550,7 +550,7 @@ def parse_http_request_file(http_req_file):
 
 	http_request = ''
 
-	with open(http_req_file, 'r') as req_file:
+	with open(http_req_file, 'r', encoding='utf-8') as req_file:
 		http_request = [l.strip() for l in req_file.readlines()]
 
 	request_line = http_request[0]

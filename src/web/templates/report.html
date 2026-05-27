@@ -1,524 +1,524 @@
-﻿<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Security Report â€” Scan #{{ scan.id }} â€” Salesforce Security AI Scanner</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
-  <style>
-    body { background:#fff; color:#1a1a2e; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:.9rem; }
-
-    /* â”€â”€ Header â”€â”€ */
-    .report-header { background:linear-gradient(135deg,#0d2850,#1a237e); color:#fff; padding:2.5rem; border-radius:12px; margin-bottom:2rem; }
-
-    /* â”€â”€ Risk gauge â”€â”€ */
-    .risk-gauge-bar  { height:10px; border-radius:5px; background:rgba(255,255,255,.2); overflow:hidden; margin-top:.4rem; }
-    .risk-gauge-fill { height:100%; border-radius:5px; transition:width .4s; }
-    .risk-fill-critical { background:linear-gradient(90deg,#ef5350,#c62828); }
-    .risk-fill-high     { background:linear-gradient(90deg,#ff8c00,#e65100); }
-    .risk-fill-medium   { background:linear-gradient(90deg,#ab47bc,#6a1fa8); }
-    .risk-fill-low      { background:linear-gradient(90deg,#42a5f5,#1565c0); }
-
-    /* â”€â”€ Section titles â”€â”€ */
-    .section-title { font-size:1rem; font-weight:700; border-bottom:2px solid #e9ecef; padding-bottom:.45rem; margin-bottom:1.25rem; color:#1a1a2e; }
-
-    /* â”€â”€ Severity colours â”€â”€ */
-    .sev-critical { color:#c62828; }
-    .sev-high     { color:#e65100; }
-    .sev-medium   { color:#6a1fa8; }
-    .sev-low      { color:#1565c0; }
-    .sev-info     { color:#2e7d32; }
-
-    /* â”€â”€ Severity badges â”€â”€ */
-    .sev-badge { display:inline-block; padding:.18rem .6rem; border-radius:4px; font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
-    .sev-badge.critical { background:#fde8e8; color:#c62828; }
-    .sev-badge.high     { background:#fdf0e6; color:#e65100; }
-    .sev-badge.medium   { background:#f4e8ff; color:#6a1fa8; }
-    .sev-badge.low      { background:#e8f0ff; color:#1565c0; }
-    .sev-badge.info     { background:#e8f5e9; color:#2e7d32; }
-    /* Uppercase risk-label variants */
-    .sev-badge.CRITICAL { background:#fde8e8; color:#c62828; }
-    .sev-badge.HIGH     { background:#fdf0e6; color:#e65100; }
-    .sev-badge.MEDIUM   { background:#f4e8ff; color:#6a1fa8; }
-    .sev-badge.LOW      { background:#e8f0ff; color:#1565c0; }
-
-    /* â”€â”€ Stat boxes â”€â”€ */
-    .stat-box { border:1px solid #e9ecef; border-radius:8px; padding:1rem; text-align:center; }
-    .stat-box .num { font-size:2rem; font-weight:700; line-height:1; }
-
-    /* â”€â”€ Finding cards â”€â”€ */
-    .finding-block { border-left:4px solid #ccc; padding:1rem 1.25rem; margin-bottom:1.1rem; border-radius:0 6px 6px 0; page-break-inside:avoid; }
-    .finding-block.critical { border-color:#c62828; background:#fff5f5; }
-    .finding-block.high     { border-color:#e65100; background:#fff8f0; }
-    .finding-block.medium   { border-color:#6a1fa8; background:#f9f5ff; }
-    .finding-block.low      { border-color:#1565c0; background:#f0f6ff; }
-    .finding-block.info     { border-color:#2e7d32; background:#f0fff0; }
-
-    /* â”€â”€ Object chips â”€â”€ */
-    .obj-chip { display:inline-block; padding:.12rem .45rem; border-radius:4px; margin:.1rem .15rem .1rem 0; font-family:monospace; font-size:.78rem; }
-    .obj-chip.critical { background:#fde8e8; color:#c62828; }
-    .obj-chip.high     { background:#fdf0e6; color:#e65100; }
-    .obj-chip.medium   { background:#f4e8ff; color:#6a1fa8; }
-    .obj-chip.low      { background:#e8f0ff; color:#1565c0; }
-    .obj-chip.info     { background:#e8f5e9; color:#2e7d32; }
-
-    /* â”€â”€ Code blocks â”€â”€ */
-    pre { border-radius:6px; padding:.75rem; font-size:.76rem; white-space:pre-wrap; margin-bottom:.75rem; }
-    pre.evidence-block { background:#f8f9fa; color:#24292f; border:1px solid #e9ecef; }
-    pre.apex-block     { background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
-
-    /* â”€â”€ Tables â”€â”€ */
-    .rca-table { font-size:.83rem; }
-    .rca-table th { background:#f0f4f8; font-weight:600; vertical-align:middle; }
-    .rca-table td { vertical-align:top; }
-    .rca-table code { font-size:.8rem; background:#f0f4f8; padding:.1rem .35rem; border-radius:3px; }
-
-    /* â”€â”€ Checklist checkbox â”€â”€ */
-    .chk-box { width:1.1rem; height:1.1rem; border:2px solid #adb5bd; border-radius:3px; display:inline-block; }
-
-    /* â”€â”€ Label pill â”€â”€ */
-    .label-pill { font-size:.7rem; font-weight:600; padding:.15rem .5rem; border-radius:10px; background:#f0f0f0; color:#555; }
-
-    /* â”€â”€ Metadata table in header â”€â”€ */
-    .meta-table { font-size:.84rem; color:rgba(255,255,255,.88); }
-    .meta-table td { padding:.18rem 0; }
-    .meta-table td:first-child { font-weight:600; padding-right:1.25rem; white-space:nowrap; }
-
-    @media print {
-      .no-print { display:none !important; }
-      body { font-size:10.5px; }
-      .report-header { break-after:page; }
-      details[open] summary::after { content:' â–²'; }
-    }
-  </style>
-</head>
-<body>
-<div class="container py-4" style="max-width:1000px;">
-
-  
-  <div class="text-end mb-3 no-print">
-    <button onclick="window.print()" class="btn btn-sm btn-outline-secondary me-2">
-      <i class="bi bi-printer me-1"></i>Print / Save PDF
-    </button>
-    <a href="/scans/{{ scan.id }}" class="btn btn-sm btn-outline-primary">
-      <i class="bi bi-arrow-left me-1"></i>Back to Scan
-    </a>
-  </div>
-
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-       1. REPORT HEADER
-       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-  <div class="report-header">
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
-      <div>
-        <h1 class="h3 fw-bold mb-1">ðŸ›¡ï¸ Security Assessment Report</h1>
-        <p class="mb-0 opacity-75" style="font-size:.85rem;">Salesforce Aura Security Scanner â€” Automated Analysis</p>
-      </div>
-      <div class="text-end">
-        {% set rl = risk_label | lower %}
-        <div class="mb-1">
-          <span style="font-size:1.65rem; font-weight:800;
-            {% if rl == 'critical' %}color:#ff8a80;
-            {% elif rl == 'high' %}color:#ffb74d;
-            {% elif rl == 'medium' %}color:#ce93d8;
-            {% else %}color:#90caf9;{% endif %}">{{ risk_score }}/100</span>
-          <span class="ms-2 px-2 py-1 rounded fw-bold sev-badge {{ risk_label }}">{{ risk_label }}</span>
-        </div>
-        <small class="opacity-75">Generated {{ generated_at }}</small>
-      </div>
-    </div>
-
-    <div class="row g-3 mb-3">
-      <div class="col-md-6">
-        <table class="meta-table w-100">
-          <tr><td>Target URL</td><td class="text-break">{{ scan.target_url }}</td></tr>
-          <tr><td>Scan Type</td><td>{% if scan.scan_type == 'auth' %}Authenticated (Cookie Session){% else %}Guest (Unauthenticated){% endif %}</td></tr>
-          <tr><td>Scan ID</td><td>#{{ scan.id }}</td></tr>
-          {% if scanner_names %}
-          <tr><td>Scanners</td><td>{{ scanner_names | join(', ') }}</td></tr>
-          {% endif %}
-        </table>
-      </div>
-      <div class="col-md-6">
-        <table class="meta-table w-100">
-          <tr><td>Started</td><td>{{ scan.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
-          {% if scan.completed_at %}
-          <tr><td>Completed</td><td>{{ scan.completed_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
-          {% endif %}
-          <tr><td>Analyst</td><td>{{ user.username }}</td></tr>
-          <tr><td>Total Findings</td><td>{{ findings | length }}</td></tr>
-        </table>
-      </div>
-    </div>
-
-    <!-- Risk gauge bar -->
-    <div style="font-size:.75rem; opacity:.75; margin-bottom:.3rem; display:flex; justify-content:space-between;">
-      <span>Risk Score</span>
-      <span>{{ risk_score }}/100 â€” {{ risk_label }}</span>
-    </div>
-    <div class="risk-gauge-bar">
-      <div class="risk-gauge-fill risk-fill-{{ rl }}" style="width:{{ risk_score }}%;"></div>
-    </div>
-  </div>
-
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-       2. EXECUTIVE SUMMARY
-       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-  <section class="mb-4">
-    <h2 class="section-title">Executive Summary</h2>
-    {% if scan.ai_analysis and scan.ai_analysis.risk_summary %}
-    <p style="font-size:.9rem; line-height:1.6;">{{ scan.ai_analysis.risk_summary }}</p>
-    {% if scan.ai_analysis.critical_patterns %}
-    <p class="fw-semibold mb-1" style="font-size:.82rem; text-transform:uppercase; letter-spacing:.04em; color:#555;">Key Risk Patterns Identified</p>
-    <ul style="font-size:.87rem; padding-left:1.5rem; line-height:1.7;">
-      {% for p in scan.ai_analysis.critical_patterns %}<li>{{ p }}</li>{% endfor %}
-    </ul>
-    {% endif %}
-    {% else %}
-    <p style="font-size:.9rem; line-height:1.6;">
-      Automated security scan of <strong>{{ scan.target_url }}</strong> completed on <strong>{{ generated_at }}</strong>.
-      {% if counts.critical > 0 or counts.high > 0 %}
-      The scan identified <strong>{{ counts.critical + counts.high }} high-severity finding(s)</strong>
-      requiring immediate remediation â€” {{ counts.critical }} Critical and {{ counts.high }} High.
-      Unauthenticated access to sensitive Salesforce objects or API endpoints may expose consumer data
-      and violate GDPR / CCPA / PDPA obligations.
-      {% elif counts.medium > 0 %}
-      The scan identified {{ counts.medium }} medium-severity finding(s) requiring timely remediation.
-      {% else %}
-      No high or medium-severity findings were detected. Review low/info findings for defence-in-depth improvements.
-      {% endif %}
-    </p>
-    {% endif %}
-  </section>
-
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-       3. FINDINGS SUMMARY
-       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-  <section class="mb-4">
-    <h2 class="section-title">Findings Summary</h2>
-    <div class="row g-3 mb-3">
-      {% for sev, label, color in [('critical','Critical','#c62828'),('high','High','#e65100'),('medium','Medium','#6a1fa8'),('low','Low','#1565c0'),('info','Info','#2e7d32')] %}
-      <div class="col">
-        <div class="stat-box">
-          <div class="num" style="color:{{ color }};">{{ counts[sev] }}</div>
-          <div style="font-size:.7rem; color:#666; text-transform:uppercase; letter-spacing:.04em;">{{ label }}</div>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    <p class="text-muted mb-0" style="font-size:.79rem;">
-      {{ findings | length }} total finding(s) across {{ scanner_names | length }} scanner module(s).
-      Computed risk score: <strong>{{ risk_score }}/100</strong> ({{ risk_label }}).
-      {% if scan.ai_analysis and scan.ai_analysis.risk_score %}AI-assessed: {{ scan.ai_analysis.risk_score }}/100.{% endif %}
-    </p>
-  </section>
-
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-       4. AFFECTED SALESFORCE OBJECTS
-       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-  {% if affected_objects_list %}
-  <section class="mb-4">
-    <h2 class="section-title">Affected Salesforce Objects</h2>
-    <p class="text-muted mb-2" style="font-size:.79rem;">
-      Salesforce sObjects referenced in findings, sorted by maximum severity.
-      Objects exposed to guest users without appropriate sharing rules may allow bulk data extraction.
-    </p>
-    <table class="table table-bordered rca-table">
-      <thead>
-        <tr>
-          <th style="width:35%;">Salesforce Object</th>
-          <th style="width:110px;">Max Severity</th>
-          <th>Associated Finding(s)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for obj in affected_objects_list %}
-        <tr>
-          <td><code>{{ obj.name }}</code></td>
-          <td><span class="sev-badge {{ obj.severity }}">{{ obj.severity }}</span></td>
-          <td style="font-size:.8rem; color:#444;">{{ obj.finding_titles | join('; ') }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
-  {% endif %}
-
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-       5. DETAILED FINDINGS
-       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-  <section class="mb-5">
-    <h2 class="section-title">Detailed Findings</h2>
-    {% for finding in findings %}
-    {% set rem = remediation_by_finding.get(finding.id) %}
-    <div class="finding-block {{ finding.severity }}">
-
-      <!-- Header row: severity + OWASP + scanner + title -->
-      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-        <span class="sev-badge {{ finding.severity }}">{{ finding.severity }}</span>
-        {% if finding.owasp_ref %}
-        <span class="label-pill">{{ finding.owasp_ref }}</span>
-        {% endif %}
-        {% if finding.scanner %}
-        <span style="font-size:.69rem; background:#f5f5f5; color:#888; padding:.1rem .4rem; border-radius:4px; border:1px solid #e0e0e0;">{{ finding.scanner }}</span>
-        {% endif %}
-        <strong style="font-size:.93rem;">{{ finding.title }}</strong>
-      </div>
-
-      <!-- Description -->
-      <p style="font-size:.86rem; line-height:1.6; margin-bottom:.6rem; color:#2a2a3e;">{{ finding.description }}</p>
-
-      <!-- Affected objects chips -->
-      {% if finding.affected_objects %}
-      <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Affected Objects</p>
-      <div class="mb-2">
-        {% for obj in finding.affected_objects %}
-        <span class="obj-chip {{ finding.severity }}">{{ obj }}</span>
-        {% endfor %}
-      </div>
-      {% endif %}
-
-      <!-- Evidence -->
-      {% if finding.evidence %}
-      <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Technical Evidence</p>
-      <pre class="evidence-block">{{ finding.evidence }}</pre>
-      {% endif %}
-
-      <!-- Remediation note (scanner-level, brief) -->
-      {% if finding.remediation %}
-      <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Remediation Note</p>
-      <p style="font-size:.85rem; margin-bottom:.5rem;">{{ finding.remediation }}</p>
-      {% endif %}
-
-      <!-- Full fix guide (expandable) -->
-      {% if rem %}
-      <details style="margin-top:.5rem;">
-        <summary class="fw-semibold" style="font-size:.82rem; cursor:pointer; color:#1565c0; user-select:none; list-style:none;">
-          <span>&#9658; Salesforce Fix Guide â€” {{ rem.owasp }} {{ rem.title }}</span>
-        </summary>
-        <div style="margin-top:.75rem; padding-left:.75rem; border-left:3px solid #c7d8f8;">
-
-          <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Salesforce Setup Steps</p>
-          <ol style="font-size:.84rem; padding-left:1.25rem; line-height:1.7;">
-            {% for step in rem.setup_steps %}<li style="margin-bottom:.2rem;">{{ step }}</li>{% endfor %}
-          </ol>
-
-          {% if rem.apex_example %}
-          <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Apex Code Fix</p>
-          <pre class="apex-block">{{ rem.apex_example }}</pre>
-          {% endif %}
-
-          <!-- Post-fix verification query, keyed to OWASP category -->
-          <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Post-Fix Verification (SOQL / Command)</p>
-          <p style="font-size:.83rem; margin-bottom:.25rem;">
-          {% set owasp_key = (rem.owasp or '').split(':')[0] %}
-          {% if owasp_key == 'API1' %}
-            Run in Developer Console:
-            <code>SELECT SObjectType, PermissionsRead, PermissionsCreate FROM ObjectPermissions WHERE Parent.Name='[Guest Profile Name]' AND PermissionsRead=true</code>
-            â†’ must return <strong>0 rows</strong> for sensitive objects.
-          {% elif owasp_key == 'API3' %}
-            Run in Developer Console:
-            <code>SELECT Field, PermissionsRead FROM FieldPermissions WHERE Parent.Name='[Guest Profile Name]' AND PermissionsRead=true AND SObjectType='[SObject API Name]'</code>
-            â†’ sensitive fields must return <strong>0 rows</strong>.
-          {% elif owasp_key == 'API5' %}
-            Test the Aura endpoint unauthenticated:
-            <code>curl -X POST "{{ scan.target_url }}/s/sfsites/aura" -d 'message=...'</code>
-            â†’ privileged controllers must return <strong>403 or AuraHandledException</strong>.
-          {% elif owasp_key == 'API8' %}
-            Verify HTTPS enforcement:
-            <code>curl -I http://{{ scan.target_url | replace('https://','') | replace('http://','') }}</code>
-            â†’ must return <strong>HTTP 301</strong> redirect to HTTPS.
-          {% else %}
-            Re-run this scan after applying the fix. The finding must no longer appear in results.
-          {% endif %}
-          </p>
-        </div>
-      </details>
-      {% endif %}
-
-    </div>
-    {% else %}
-    <p class="text-muted">No findings recorded for this scan.</p>
-    {% endfor %}
-  </section>
-
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-       6. BUSINESS IMPACT ASSESSMENT
-       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-  {% if findings %}
-  <section class="mb-4">
-    <h2 class="section-title">Business Impact Assessment</h2>
-    <table class="table table-bordered rca-table">
-      <thead>
-        <tr>
-          <th style="width:22%;">Impact Area</th>
-          <th>Description</th>
-          <th style="width:110px;">Risk Level</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if counts.critical > 0 %}
-        <tr>
-          <td class="fw-semibold">Data Exposure</td>
-          <td>{{ counts.critical }} critical finding(s) indicate unauthenticated read access to Salesforce objects via Aura/LWC endpoints. Consumer PII or sensitive business records may be accessible without login and extractable via the Salesforce REST/SOAP/GraphQL API.</td>
-          <td><span class="sev-badge critical">CRITICAL</span></td>
-        </tr>
-        {% endif %}
-        {% if counts.critical > 0 %}
-        <tr>
-          <td class="fw-semibold">Regulatory Exposure</td>
-          <td>Unauthenticated PII access may constitute a personal data breach under GDPR Art. 33/34 (72-hour DPA notification), CCPA, PDPA (Thailand), LGPD (Brazil), or other applicable regulations. DPO assessment is mandatory.</td>
-          <td><span class="sev-badge critical">CRITICAL</span></td>
-        </tr>
-        {% endif %}
-        {% if counts.high > 0 %}
-        <tr>
-          <td class="fw-semibold">Access Control</td>
-          <td>{{ counts.high }} high-severity finding(s) indicate broken object-level or function-level authorization. Attackers may enumerate, read, or manipulate records beyond their intended scope, including via automated bulk API extraction.</td>
-          <td><span class="sev-badge high">HIGH</span></td>
-        </tr>
-        {% endif %}
-        {% if counts.medium > 0 %}
-        <tr>
-          <td class="fw-semibold">API Surface Exposure</td>
-          <td>{{ counts.medium }} medium-severity finding(s) relating to excessive data returned by Aura controllers, missing authentication guards on Apex endpoints, or exposed org metadata that aids reconnaissance.</td>
-          <td><span class="sev-badge medium">MEDIUM</span></td>
-        </tr>
-        {% endif %}
-        {% if counts.low > 0 or counts.info > 0 %}
-        <tr>
-          <td class="fw-semibold">Security Posture</td>
-          <td>{{ counts.low + counts.info }} low/info finding(s) including missing HTTP security headers (HSTS, CSP, X-Frame-Options), insecure session cookie flags, or open redirect vectors that weaken defence-in-depth.</td>
-          <td><span class="sev-badge low">LOW</span></td>
-        </tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </section>
-  {% endif %}
-
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-       7. REMEDIATION CHECKLIST
-       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-  {% if remediation_sections %}
-  <section class="mb-5">
-    <h2 class="section-title">Remediation Checklist</h2>
-    <p class="text-muted mb-3" style="font-size:.79rem;">
-      Apply fixes in priority order (Critical â†’ High â†’ Medium â†’ Low).
-      Tick each item only after the post-fix verification query confirms the issue is resolved.
-      All Apex / metadata changes should follow the standard DevSecOps pipeline: feature branch â†’ SIT â†’ UAT â†’ Production.
-    </p>
-    <table class="table table-bordered rca-table">
-      <thead>
-        <tr>
-          <th style="width:55px;">#</th>
-          <th style="width:26%;">OWASP Category</th>
-          <th>Salesforce Setup Steps</th>
-          <th style="width:115px;">Priority</th>
-          <th style="width:36px;" class="text-center">âœ…</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for section in remediation_sections %}
-        {% set owasp_key = (section.owasp or '').split(':')[0] %}
-        <tr>
-          <td class="fw-bold text-center" style="color:#777;">ST-{{ loop.index }}</td>
-          <td>
-            <span class="fw-semibold d-block" style="font-size:.83rem;">{{ section.title }}</span>
-            <span style="font-size:.72rem; color:#888;">{{ section.owasp }}</span>
-          </td>
-          <td>
-            <ol style="padding-left:1.1rem; margin-bottom:.4rem; font-size:.82rem; line-height:1.6;">
-              {% for step in section.setup_steps[:4] %}<li>{{ step }}</li>{% endfor %}
-              {% if section.setup_steps | length > 4 %}
-              <li style="color:#888;"><em>+{{ section.setup_steps | length - 4 }} more steps â€” expand finding above.</em></li>
-              {% endif %}
-            </ol>
-            {% if section.apex_example %}
-            <details style="margin-top:.25rem;">
-              <summary style="font-size:.74rem; cursor:pointer; color:#1565c0; list-style:none; user-select:none;">
-                <span>&#9658; View Apex Fix</span>
-              </summary>
-              <pre class="apex-block" style="font-size:.72rem; margin-top:.4rem;">{{ section.apex_example }}</pre>
-            </details>
-            {% endif %}
-            <!-- Verification query -->
-            <div style="font-size:.78rem; margin-top:.4rem; padding:.4rem .6rem; background:#f0f4f8; border-radius:4px; border:1px solid #dce4ee;">
-              <span class="fw-semibold" style="color:#555;">Verify: </span>
-              {% if owasp_key == 'API1' %}
-              <code>SELECT SObjectType, PermissionsRead FROM ObjectPermissions WHERE Parent.Name='[Guest Profile]' AND PermissionsRead=true</code> â†’ 0 rows
-              {% elif owasp_key == 'API3' %}
-              <code>SELECT Field, PermissionsRead FROM FieldPermissions WHERE Parent.Name='[Guest Profile]' AND PermissionsRead=true AND SObjectType='[Object]'</code> â†’ 0 rows
-              {% elif owasp_key == 'API5' %}
-              Unauthenticated call to privileged Apex controller must return <code>AuraHandledException</code> or HTTP 403.
-              {% elif owasp_key == 'API8' %}
-              <code>curl -I http://[site-domain]</code> â†’ HTTP 301 redirect to HTTPS; security headers present.
-              {% else %}
-              Re-run scan â€” this finding must not reappear after fix is deployed.
-              {% endif %}
-            </div>
-          </td>
-          <td class="text-center" style="vertical-align:middle;">
-            {% if owasp_key in ('API1', 'API2') %}
-            <span class="sev-badge critical" style="display:block; margin-bottom:.25rem;">P1</span>
-            <small class="text-muted" style="font-size:.68rem;">Immediate</small>
-            {% elif owasp_key in ('API3', 'API5') %}
-            <span class="sev-badge high" style="display:block; margin-bottom:.25rem;">P2</span>
-            <small class="text-muted" style="font-size:.68rem;">0â€“7 days</small>
-            {% elif owasp_key in ('API4', 'API6') %}
-            <span class="sev-badge medium" style="display:block; margin-bottom:.25rem;">P3</span>
-            <small class="text-muted" style="font-size:.68rem;">7â€“14 days</small>
-            {% else %}
-            <span class="sev-badge low" style="display:block; margin-bottom:.25rem;">P4</span>
-            <small class="text-muted" style="font-size:.68rem;">14â€“30 days</small>
-            {% endif %}
-          </td>
-          <td class="text-center" style="vertical-align:middle;"><span class="chk-box"></span></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="text-muted text-center py-3">No remediation items available.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
-  {% endif %}
-
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-       8. PRIORITY ACTION PLAN  (AI-generated)
-       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-  {% if scan.ai_analysis and scan.ai_analysis.priority_actions %}
-  <section class="mb-5">
-    <h2 class="section-title">Priority Action Plan <span class="label-pill ms-1">AI-Generated</span></h2>
-    <table class="table table-bordered rca-table">
-      <thead>
-        <tr><th style="width:34px;">#</th><th>Action</th><th style="width:110px;">Urgency</th><th style="width:110px;">Type</th></tr>
-      </thead>
-      <tbody>
-        {% for action in scan.ai_analysis.priority_actions %}
-        <tr>
-          <td class="fw-bold text-center" style="color:#777;">{{ loop.index }}</td>
-          <td>{{ action.action }}</td>
-          <td>
-            <span class="fw-semibold
-              {% if action.urgency == 'immediate' %}sev-critical
-              {% elif action.urgency == 'short-term' %}sev-high
-              {% else %}sev-low{% endif %}">{{ action.urgency | upper }}</span>
-          </td>
-          <td>{{ action.type | title }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
-  {% endif %}
-
-  
-  <footer class="text-center text-muted py-3" style="border-top:1px solid #e9ecef; font-size:.78rem;">
-    Generated by <strong>Salesforce Security AI Scanner</strong> on {{ generated_at }} &middot; Apache 2.0 License<br/>
-    Author: Phani &middot; <a href="mailto:phani.dummy@hotmail.com">phani.dummy@hotmail.com</a>
-  </footer>
-
-</div>
-</body>
-</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Security Report — Scan #{{ scan.id }} — Salesforce Security AI Scanner</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
+  <style>
+    body { background:#fff; color:#1a1a2e; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:.9rem; }
+
+    /* ── Header ── */
+    .report-header { background:linear-gradient(135deg,#0d2850,#1a237e); color:#fff; padding:2.5rem; border-radius:12px; margin-bottom:2rem; }
+
+    /* ── Risk gauge ── */
+    .risk-gauge-bar  { height:10px; border-radius:5px; background:rgba(255,255,255,.2); overflow:hidden; margin-top:.4rem; }
+    .risk-gauge-fill { height:100%; border-radius:5px; transition:width .4s; }
+    .risk-fill-critical { background:linear-gradient(90deg,#ef5350,#c62828); }
+    .risk-fill-high     { background:linear-gradient(90deg,#ff8c00,#e65100); }
+    .risk-fill-medium   { background:linear-gradient(90deg,#ab47bc,#6a1fa8); }
+    .risk-fill-low      { background:linear-gradient(90deg,#42a5f5,#1565c0); }
+
+    /* ── Section titles ── */
+    .section-title { font-size:1rem; font-weight:700; border-bottom:2px solid #e9ecef; padding-bottom:.45rem; margin-bottom:1.25rem; color:#1a1a2e; }
+
+    /* ── Severity colours ── */
+    .sev-critical { color:#c62828; }
+    .sev-high     { color:#e65100; }
+    .sev-medium   { color:#6a1fa8; }
+    .sev-low      { color:#1565c0; }
+    .sev-info     { color:#2e7d32; }
+
+    /* ── Severity badges ── */
+    .sev-badge { display:inline-block; padding:.18rem .6rem; border-radius:4px; font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+    .sev-badge.critical { background:#fde8e8; color:#c62828; }
+    .sev-badge.high     { background:#fdf0e6; color:#e65100; }
+    .sev-badge.medium   { background:#f4e8ff; color:#6a1fa8; }
+    .sev-badge.low      { background:#e8f0ff; color:#1565c0; }
+    .sev-badge.info     { background:#e8f5e9; color:#2e7d32; }
+    /* Uppercase risk-label variants */
+    .sev-badge.CRITICAL { background:#fde8e8; color:#c62828; }
+    .sev-badge.HIGH     { background:#fdf0e6; color:#e65100; }
+    .sev-badge.MEDIUM   { background:#f4e8ff; color:#6a1fa8; }
+    .sev-badge.LOW      { background:#e8f0ff; color:#1565c0; }
+
+    /* ── Stat boxes ── */
+    .stat-box { border:1px solid #e9ecef; border-radius:8px; padding:1rem; text-align:center; }
+    .stat-box .num { font-size:2rem; font-weight:700; line-height:1; }
+
+    /* ── Finding cards ── */
+    .finding-block { border-left:4px solid #ccc; padding:1rem 1.25rem; margin-bottom:1.1rem; border-radius:0 6px 6px 0; page-break-inside:avoid; }
+    .finding-block.critical { border-color:#c62828; background:#fff5f5; }
+    .finding-block.high     { border-color:#e65100; background:#fff8f0; }
+    .finding-block.medium   { border-color:#6a1fa8; background:#f9f5ff; }
+    .finding-block.low      { border-color:#1565c0; background:#f0f6ff; }
+    .finding-block.info     { border-color:#2e7d32; background:#f0fff0; }
+
+    /* ── Object chips ── */
+    .obj-chip { display:inline-block; padding:.12rem .45rem; border-radius:4px; margin:.1rem .15rem .1rem 0; font-family:monospace; font-size:.78rem; }
+    .obj-chip.critical { background:#fde8e8; color:#c62828; }
+    .obj-chip.high     { background:#fdf0e6; color:#e65100; }
+    .obj-chip.medium   { background:#f4e8ff; color:#6a1fa8; }
+    .obj-chip.low      { background:#e8f0ff; color:#1565c0; }
+    .obj-chip.info     { background:#e8f5e9; color:#2e7d32; }
+
+    /* ── Code blocks ── */
+    pre { border-radius:6px; padding:.75rem; font-size:.76rem; white-space:pre-wrap; margin-bottom:.75rem; }
+    pre.evidence-block { background:#f8f9fa; color:#24292f; border:1px solid #e9ecef; }
+    pre.apex-block     { background:#0d1117; color:#c9d1d9; border:1px solid #30363d; }
+
+    /* ── Tables ── */
+    .rca-table { font-size:.83rem; }
+    .rca-table th { background:#f0f4f8; font-weight:600; vertical-align:middle; }
+    .rca-table td { vertical-align:top; }
+    .rca-table code { font-size:.8rem; background:#f0f4f8; padding:.1rem .35rem; border-radius:3px; }
+
+    /* ── Checklist checkbox ── */
+    .chk-box { width:1.1rem; height:1.1rem; border:2px solid #adb5bd; border-radius:3px; display:inline-block; }
+
+    /* ── Label pill ── */
+    .label-pill { font-size:.7rem; font-weight:600; padding:.15rem .5rem; border-radius:10px; background:#f0f0f0; color:#555; }
+
+    /* ── Metadata table in header ── */
+    .meta-table { font-size:.84rem; color:rgba(255,255,255,.88); }
+    .meta-table td { padding:.18rem 0; }
+    .meta-table td:first-child { font-weight:600; padding-right:1.25rem; white-space:nowrap; }
+
+    @media print {
+      .no-print { display:none !important; }
+      body { font-size:10.5px; }
+      .report-header { break-after:page; }
+      details[open] summary::after { content:' ▲'; }
+    }
+  </style>
+</head>
+<body>
+<div class="container py-4" style="max-width:1000px;">
+
+  
+  <div class="text-end mb-3 no-print">
+    <button onclick="window.print()" class="btn btn-sm btn-outline-secondary me-2">
+      <i class="bi bi-printer me-1"></i>Print / Save PDF
+    </button>
+    <a href="/scans/{{ scan.id }}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-arrow-left me-1"></i>Back to Scan
+    </a>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       1. REPORT HEADER
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="report-header">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+      <div>
+        <h1 class="h3 fw-bold mb-1">🛡️ Security Assessment Report</h1>
+        <p class="mb-0 opacity-75" style="font-size:.85rem;">Salesforce Aura Security Scanner — Automated Analysis</p>
+      </div>
+      <div class="text-end">
+        {% set rl = risk_label | lower %}
+        <div class="mb-1">
+          <span style="font-size:1.65rem; font-weight:800;
+            {% if rl == 'critical' %}color:#ff8a80;
+            {% elif rl == 'high' %}color:#ffb74d;
+            {% elif rl == 'medium' %}color:#ce93d8;
+            {% else %}color:#90caf9;{% endif %}">{{ risk_score }}/100</span>
+          <span class="ms-2 px-2 py-1 rounded fw-bold sev-badge {{ risk_label }}">{{ risk_label }}</span>
+        </div>
+        <small class="opacity-75">Generated {{ generated_at }}</small>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <table class="meta-table w-100">
+          <tr><td>Target URL</td><td class="text-break">{{ scan.target_url }}</td></tr>
+          <tr><td>Scan Type</td><td>{% if scan.scan_type == 'auth' %}Authenticated (Cookie Session){% else %}Guest (Unauthenticated){% endif %}</td></tr>
+          <tr><td>Scan ID</td><td>#{{ scan.id }}</td></tr>
+          {% if scanner_names %}
+          <tr><td>Scanners</td><td>{{ scanner_names | join(', ') }}</td></tr>
+          {% endif %}
+        </table>
+      </div>
+      <div class="col-md-6">
+        <table class="meta-table w-100">
+          <tr><td>Started</td><td>{{ scan.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+          {% if scan.completed_at %}
+          <tr><td>Completed</td><td>{{ scan.completed_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+          {% endif %}
+          <tr><td>Analyst</td><td>{{ user.username }}</td></tr>
+          <tr><td>Total Findings</td><td>{{ findings | length }}</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Risk gauge bar -->
+    <div style="font-size:.75rem; opacity:.75; margin-bottom:.3rem; display:flex; justify-content:space-between;">
+      <span>Risk Score</span>
+      <span>{{ risk_score }}/100 — {{ risk_label }}</span>
+    </div>
+    <div class="risk-gauge-bar">
+      <div class="risk-gauge-fill risk-fill-{{ rl }}" style="width:{{ risk_score }}%;"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       2. EXECUTIVE SUMMARY
+       ══════════════════════════════════════════════════════════════════════ -->
+  <section class="mb-4">
+    <h2 class="section-title">Executive Summary</h2>
+    {% if scan.ai_analysis and scan.ai_analysis.risk_summary %}
+    <p style="font-size:.9rem; line-height:1.6;">{{ scan.ai_analysis.risk_summary }}</p>
+    {% if scan.ai_analysis.critical_patterns %}
+    <p class="fw-semibold mb-1" style="font-size:.82rem; text-transform:uppercase; letter-spacing:.04em; color:#555;">Key Risk Patterns Identified</p>
+    <ul style="font-size:.87rem; padding-left:1.5rem; line-height:1.7;">
+      {% for p in scan.ai_analysis.critical_patterns %}<li>{{ p }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% else %}
+    <p style="font-size:.9rem; line-height:1.6;">
+      Automated security scan of <strong>{{ scan.target_url }}</strong> completed on <strong>{{ generated_at }}</strong>.
+      {% if counts.critical > 0 or counts.high > 0 %}
+      The scan identified <strong>{{ counts.critical + counts.high }} high-severity finding(s)</strong>
+      requiring immediate remediation — {{ counts.critical }} Critical and {{ counts.high }} High.
+      Unauthenticated access to sensitive Salesforce objects or API endpoints may expose consumer data
+      and violate GDPR / CCPA / PDPA obligations.
+      {% elif counts.medium > 0 %}
+      The scan identified {{ counts.medium }} medium-severity finding(s) requiring timely remediation.
+      {% else %}
+      No high or medium-severity findings were detected. Review low/info findings for defence-in-depth improvements.
+      {% endif %}
+    </p>
+    {% endif %}
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       3. FINDINGS SUMMARY
+       ══════════════════════════════════════════════════════════════════════ -->
+  <section class="mb-4">
+    <h2 class="section-title">Findings Summary</h2>
+    <div class="row g-3 mb-3">
+      {% for sev, label, color in [('critical','Critical','#c62828'),('high','High','#e65100'),('medium','Medium','#6a1fa8'),('low','Low','#1565c0'),('info','Info','#2e7d32')] %}
+      <div class="col">
+        <div class="stat-box">
+          <div class="num" style="color:{{ color }};">{{ counts[sev] }}</div>
+          <div style="font-size:.7rem; color:#666; text-transform:uppercase; letter-spacing:.04em;">{{ label }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="text-muted mb-0" style="font-size:.79rem;">
+      {{ findings | length }} total finding(s) across {{ scanner_names | length }} scanner module(s).
+      Computed risk score: <strong>{{ risk_score }}/100</strong> ({{ risk_label }}).
+      {% if scan.ai_analysis and scan.ai_analysis.risk_score %}AI-assessed: {{ scan.ai_analysis.risk_score }}/100.{% endif %}
+    </p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       4. AFFECTED SALESFORCE OBJECTS
+       ══════════════════════════════════════════════════════════════════════ -->
+  {% if affected_objects_list %}
+  <section class="mb-4">
+    <h2 class="section-title">Affected Salesforce Objects</h2>
+    <p class="text-muted mb-2" style="font-size:.79rem;">
+      Salesforce sObjects referenced in findings, sorted by maximum severity.
+      Objects exposed to guest users without appropriate sharing rules may allow bulk data extraction.
+    </p>
+    <table class="table table-bordered rca-table">
+      <thead>
+        <tr>
+          <th style="width:35%;">Salesforce Object</th>
+          <th style="width:110px;">Max Severity</th>
+          <th>Associated Finding(s)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for obj in affected_objects_list %}
+        <tr>
+          <td><code>{{ obj.name }}</code></td>
+          <td><span class="sev-badge {{ obj.severity }}">{{ obj.severity }}</span></td>
+          <td style="font-size:.8rem; color:#444;">{{ obj.finding_titles | join('; ') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       5. DETAILED FINDINGS
+       ══════════════════════════════════════════════════════════════════════ -->
+  <section class="mb-5">
+    <h2 class="section-title">Detailed Findings</h2>
+    {% for finding in findings %}
+    {% set rem = remediation_by_finding.get(finding.id) %}
+    <div class="finding-block {{ finding.severity }}">
+
+      <!-- Header row: severity + OWASP + scanner + title -->
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="sev-badge {{ finding.severity }}">{{ finding.severity }}</span>
+        {% if finding.owasp_ref %}
+        <span class="label-pill">{{ finding.owasp_ref }}</span>
+        {% endif %}
+        {% if finding.scanner %}
+        <span style="font-size:.69rem; background:#f5f5f5; color:#888; padding:.1rem .4rem; border-radius:4px; border:1px solid #e0e0e0;">{{ finding.scanner }}</span>
+        {% endif %}
+        <strong style="font-size:.93rem;">{{ finding.title }}</strong>
+      </div>
+
+      <!-- Description -->
+      <p style="font-size:.86rem; line-height:1.6; margin-bottom:.6rem; color:#2a2a3e;">{{ finding.description }}</p>
+
+      <!-- Affected objects chips -->
+      {% if finding.affected_objects %}
+      <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Affected Objects</p>
+      <div class="mb-2">
+        {% for obj in finding.affected_objects %}
+        <span class="obj-chip {{ finding.severity }}">{{ obj }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Evidence -->
+      {% if finding.evidence %}
+      <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Technical Evidence</p>
+      <pre class="evidence-block">{{ finding.evidence }}</pre>
+      {% endif %}
+
+      <!-- Remediation note (scanner-level, brief) -->
+      {% if finding.remediation %}
+      <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Remediation Note</p>
+      <p style="font-size:.85rem; margin-bottom:.5rem;">{{ finding.remediation }}</p>
+      {% endif %}
+
+      <!-- Full fix guide (expandable) -->
+      {% if rem %}
+      <details style="margin-top:.5rem;">
+        <summary class="fw-semibold" style="font-size:.82rem; cursor:pointer; color:#1565c0; user-select:none; list-style:none;">
+          <span>&#9658; Salesforce Fix Guide — {{ rem.owasp }} {{ rem.title }}</span>
+        </summary>
+        <div style="margin-top:.75rem; padding-left:.75rem; border-left:3px solid #c7d8f8;">
+
+          <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Salesforce Setup Steps</p>
+          <ol style="font-size:.84rem; padding-left:1.25rem; line-height:1.7;">
+            {% for step in rem.setup_steps %}<li style="margin-bottom:.2rem;">{{ step }}</li>{% endfor %}
+          </ol>
+
+          {% if rem.apex_example %}
+          <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Apex Code Fix</p>
+          <pre class="apex-block">{{ rem.apex_example }}</pre>
+          {% endif %}
+
+          <!-- Post-fix verification query, keyed to OWASP category -->
+          <p class="fw-semibold mb-1" style="font-size:.73rem; text-transform:uppercase; letter-spacing:.05em; color:#777;">Post-Fix Verification (SOQL / Command)</p>
+          <p style="font-size:.83rem; margin-bottom:.25rem;">
+          {% set owasp_key = (rem.owasp or '').split(':')[0] %}
+          {% if owasp_key == 'API1' %}
+            Run in Developer Console:
+            <code>SELECT SObjectType, PermissionsRead, PermissionsCreate FROM ObjectPermissions WHERE Parent.Name='[Guest Profile Name]' AND PermissionsRead=true</code>
+            → must return <strong>0 rows</strong> for sensitive objects.
+          {% elif owasp_key == 'API3' %}
+            Run in Developer Console:
+            <code>SELECT Field, PermissionsRead FROM FieldPermissions WHERE Parent.Name='[Guest Profile Name]' AND PermissionsRead=true AND SObjectType='[SObject API Name]'</code>
+            → sensitive fields must return <strong>0 rows</strong>.
+          {% elif owasp_key == 'API5' %}
+            Test the Aura endpoint unauthenticated:
+            <code>curl -X POST "{{ scan.target_url }}/s/sfsites/aura" -d 'message=...'</code>
+            → privileged controllers must return <strong>403 or AuraHandledException</strong>.
+          {% elif owasp_key == 'API8' %}
+            Verify HTTPS enforcement:
+            <code>curl -I http://{{ scan.target_url | replace('https://','') | replace('http://','') }}</code>
+            → must return <strong>HTTP 301</strong> redirect to HTTPS.
+          {% else %}
+            Re-run this scan after applying the fix. The finding must no longer appear in results.
+          {% endif %}
+          </p>
+        </div>
+      </details>
+      {% endif %}
+
+    </div>
+    {% else %}
+    <p class="text-muted">No findings recorded for this scan.</p>
+    {% endfor %}
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       6. BUSINESS IMPACT ASSESSMENT
+       ══════════════════════════════════════════════════════════════════════ -->
+  {% if findings %}
+  <section class="mb-4">
+    <h2 class="section-title">Business Impact Assessment</h2>
+    <table class="table table-bordered rca-table">
+      <thead>
+        <tr>
+          <th style="width:22%;">Impact Area</th>
+          <th>Description</th>
+          <th style="width:110px;">Risk Level</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if counts.critical > 0 %}
+        <tr>
+          <td class="fw-semibold">Data Exposure</td>
+          <td>{{ counts.critical }} critical finding(s) indicate unauthenticated read access to Salesforce objects via Aura/LWC endpoints. Consumer PII or sensitive business records may be accessible without login and extractable via the Salesforce REST/SOAP/GraphQL API.</td>
+          <td><span class="sev-badge critical">CRITICAL</span></td>
+        </tr>
+        {% endif %}
+        {% if counts.critical > 0 %}
+        <tr>
+          <td class="fw-semibold">Regulatory Exposure</td>
+          <td>Unauthenticated PII access may constitute a personal data breach under GDPR Art. 33/34 (72-hour DPA notification), CCPA, PDPA (Thailand), LGPD (Brazil), or other applicable regulations. DPO assessment is mandatory.</td>
+          <td><span class="sev-badge critical">CRITICAL</span></td>
+        </tr>
+        {% endif %}
+        {% if counts.high > 0 %}
+        <tr>
+          <td class="fw-semibold">Access Control</td>
+          <td>{{ counts.high }} high-severity finding(s) indicate broken object-level or function-level authorization. Attackers may enumerate, read, or manipulate records beyond their intended scope, including via automated bulk API extraction.</td>
+          <td><span class="sev-badge high">HIGH</span></td>
+        </tr>
+        {% endif %}
+        {% if counts.medium > 0 %}
+        <tr>
+          <td class="fw-semibold">API Surface Exposure</td>
+          <td>{{ counts.medium }} medium-severity finding(s) relating to excessive data returned by Aura controllers, missing authentication guards on Apex endpoints, or exposed org metadata that aids reconnaissance.</td>
+          <td><span class="sev-badge medium">MEDIUM</span></td>
+        </tr>
+        {% endif %}
+        {% if counts.low > 0 or counts.info > 0 %}
+        <tr>
+          <td class="fw-semibold">Security Posture</td>
+          <td>{{ counts.low + counts.info }} low/info finding(s) including missing HTTP security headers (HSTS, CSP, X-Frame-Options), insecure session cookie flags, or open redirect vectors that weaken defence-in-depth.</td>
+          <td><span class="sev-badge low">LOW</span></td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       7. REMEDIATION CHECKLIST
+       ══════════════════════════════════════════════════════════════════════ -->
+  {% if remediation_sections %}
+  <section class="mb-5">
+    <h2 class="section-title">Remediation Checklist</h2>
+    <p class="text-muted mb-3" style="font-size:.79rem;">
+      Apply fixes in priority order (Critical → High → Medium → Low).
+      Tick each item only after the post-fix verification query confirms the issue is resolved.
+      All Apex / metadata changes should follow the standard DevSecOps pipeline: feature branch → SIT → UAT → Production.
+    </p>
+    <table class="table table-bordered rca-table">
+      <thead>
+        <tr>
+          <th style="width:55px;">#</th>
+          <th style="width:26%;">OWASP Category</th>
+          <th>Salesforce Setup Steps</th>
+          <th style="width:115px;">Priority</th>
+          <th style="width:36px;" class="text-center">✅</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for section in remediation_sections %}
+        {% set owasp_key = (section.owasp or '').split(':')[0] %}
+        <tr>
+          <td class="fw-bold text-center" style="color:#777;">ST-{{ loop.index }}</td>
+          <td>
+            <span class="fw-semibold d-block" style="font-size:.83rem;">{{ section.title }}</span>
+            <span style="font-size:.72rem; color:#888;">{{ section.owasp }}</span>
+          </td>
+          <td>
+            <ol style="padding-left:1.1rem; margin-bottom:.4rem; font-size:.82rem; line-height:1.6;">
+              {% for step in section.setup_steps[:4] %}<li>{{ step }}</li>{% endfor %}
+              {% if section.setup_steps | length > 4 %}
+              <li style="color:#888;"><em>+{{ section.setup_steps | length - 4 }} more steps — expand finding above.</em></li>
+              {% endif %}
+            </ol>
+            {% if section.apex_example %}
+            <details style="margin-top:.25rem;">
+              <summary style="font-size:.74rem; cursor:pointer; color:#1565c0; list-style:none; user-select:none;">
+                <span>&#9658; View Apex Fix</span>
+              </summary>
+              <pre class="apex-block" style="font-size:.72rem; margin-top:.4rem;">{{ section.apex_example }}</pre>
+            </details>
+            {% endif %}
+            <!-- Verification query -->
+            <div style="font-size:.78rem; margin-top:.4rem; padding:.4rem .6rem; background:#f0f4f8; border-radius:4px; border:1px solid #dce4ee;">
+              <span class="fw-semibold" style="color:#555;">Verify: </span>
+              {% if owasp_key == 'API1' %}
+              <code>SELECT SObjectType, PermissionsRead FROM ObjectPermissions WHERE Parent.Name='[Guest Profile]' AND PermissionsRead=true</code> → 0 rows
+              {% elif owasp_key == 'API3' %}
+              <code>SELECT Field, PermissionsRead FROM FieldPermissions WHERE Parent.Name='[Guest Profile]' AND PermissionsRead=true AND SObjectType='[Object]'</code> → 0 rows
+              {% elif owasp_key == 'API5' %}
+              Unauthenticated call to privileged Apex controller must return <code>AuraHandledException</code> or HTTP 403.
+              {% elif owasp_key == 'API8' %}
+              <code>curl -I http://[site-domain]</code> → HTTP 301 redirect to HTTPS; security headers present.
+              {% else %}
+              Re-run scan — this finding must not reappear after fix is deployed.
+              {% endif %}
+            </div>
+          </td>
+          <td class="text-center" style="vertical-align:middle;">
+            {% if owasp_key in ('API1', 'API2') %}
+            <span class="sev-badge critical" style="display:block; margin-bottom:.25rem;">P1</span>
+            <small class="text-muted" style="font-size:.68rem;">Immediate</small>
+            {% elif owasp_key in ('API3', 'API5') %}
+            <span class="sev-badge high" style="display:block; margin-bottom:.25rem;">P2</span>
+            <small class="text-muted" style="font-size:.68rem;">0–7 days</small>
+            {% elif owasp_key in ('API4', 'API6') %}
+            <span class="sev-badge medium" style="display:block; margin-bottom:.25rem;">P3</span>
+            <small class="text-muted" style="font-size:.68rem;">7–14 days</small>
+            {% else %}
+            <span class="sev-badge low" style="display:block; margin-bottom:.25rem;">P4</span>
+            <small class="text-muted" style="font-size:.68rem;">14–30 days</small>
+            {% endif %}
+          </td>
+          <td class="text-center" style="vertical-align:middle;"><span class="chk-box"></span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted text-center py-3">No remediation items available.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       8. PRIORITY ACTION PLAN  (AI-generated)
+       ══════════════════════════════════════════════════════════════════════ -->
+  {% if scan.ai_analysis and scan.ai_analysis.priority_actions %}
+  <section class="mb-5">
+    <h2 class="section-title">Priority Action Plan <span class="label-pill ms-1">AI-Generated</span></h2>
+    <table class="table table-bordered rca-table">
+      <thead>
+        <tr><th style="width:34px;">#</th><th>Action</th><th style="width:110px;">Urgency</th><th style="width:110px;">Type</th></tr>
+      </thead>
+      <tbody>
+        {% for action in scan.ai_analysis.priority_actions %}
+        <tr>
+          <td class="fw-bold text-center" style="color:#777;">{{ loop.index }}</td>
+          <td>{{ action.action }}</td>
+          <td>
+            <span class="fw-semibold
+              {% if action.urgency == 'immediate' %}sev-critical
+              {% elif action.urgency == 'short-term' %}sev-high
+              {% else %}sev-low{% endif %}">{{ action.urgency | upper }}</span>
+          </td>
+          <td>{{ action.type | title }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  
+  <footer class="text-center text-muted py-3" style="border-top:1px solid #e9ecef; font-size:.78rem;">
+    Generated by <strong>Salesforce Security AI Scanner</strong> on {{ generated_at }} &middot; Apache 2.0 License<br/>
+    Author: Phani &middot; <a href="mailto:phani.dummy@hotmail.com">phani.dummy@hotmail.com</a>
+  </footer>
+
+</div>
+</body>
+</html>
