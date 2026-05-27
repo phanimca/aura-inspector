@@ -13,22 +13,26 @@
 # limitations under the License.
 
 """
-Salesforce OAuth 2.0 Authorization Code Flow handler for Experience Cloud.
+Salesforce OAuth 2.0 Authorization Code + PKCE (S256) flow handler.
+
+Uses the same approach as the Salesforce CLI `sf org login web` command:
+no Consumer Secret is required or stored.
 
 Prerequisites (one-time Salesforce Setup steps)
 ------------------------------------------------
-1. Setup > App Manager > New Connected App
+1. Setup > App Manager > New Connected App (or External Client App).
 2. Enable OAuth Settings.
 3. Set the callback URL to: http://localhost:8484/callback
-4. Add scopes: api, web, refresh_token (or the minimum your test requires).
-5. Note the Consumer Key (client_id) and Consumer Secret (client_secret).
+4. Add scopes: api, web.
+5. In OAuth Policies, uncheck "Require Secret for Web Server Flow"
+   (or enable "Require PKCE").
+6. Note the Consumer Key (client_id) — the Consumer Secret is NOT needed.
 
 Usage
 -----
     handler = SalesforceOAuthHandler(
         instance_url='https://login.salesforce.com',
         client_id='3MVG9...',
-        client_secret='optional_for_web_server_flow',
     )
     token_data = handler.authenticate_browser_flow()
     # token_data = {'access_token': '...', 'instance_url': '...', 'scope': '...'}
@@ -165,7 +169,7 @@ class SalesforceOAuthHandler:
 	def authenticate_browser_flow(self, timeout_seconds: int = 120) -> dict:
 		"""
 		Open the browser to Salesforce, wait for the OAuth callback, exchange
-		the code for a token, and return the token dict.
+		the code for a token using PKCE (S256), and return the token dict.
 
 		Raises
 		------
@@ -180,7 +184,13 @@ class SalesforceOAuthHandler:
 		server_thread = threading.Thread(target=server.serve_forever, daemon=True)
 		server_thread.start()
 
-		auth_url = self.get_authorization_url(redirect_uri=REDIRECT_URI)
+		# Generate a fresh PKCE pair for this auth request.
+		code_verifier, code_challenge = generate_pkce_pair()
+
+		auth_url = self.get_authorization_url(
+			redirect_uri=REDIRECT_URI,
+			code_challenge=code_challenge,
+		)
 		webbrowser.open(auth_url)
 
 		deadline = time.time() + timeout_seconds
@@ -198,7 +208,11 @@ class SalesforceOAuthHandler:
 		if _CallbackHandler.auth_error:
 			raise ValueError(f'OAuth authorization error: {_CallbackHandler.auth_error}')
 
-		return self._exchange_code(code=_CallbackHandler.auth_code, redirect_uri=REDIRECT_URI)
+		return self._exchange_code(
+			code=_CallbackHandler.auth_code,
+			redirect_uri=REDIRECT_URI,
+			code_verifier=code_verifier,
+		)
 
 	def get_session_cookie(self, access_token: str, verify_with_userinfo: bool = True) -> str:
 		"""
