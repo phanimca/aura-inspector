@@ -349,7 +349,220 @@ def collect_audit_data(url, cookies, object_list, proxy, fetch_max_data=False, i
 	}
 
 
-def save_audit_data(scan_data, output_dir):
+def _build_cli_findings(scan_data, aura):
+	all_records = scan_data.get('all_records', {})
+	all_records_gql = scan_data.get('all_records_gql', {})
+	recordlists = scan_data.get('recordlists', [])
+	custom_ctrl = scan_data.get('custom_controllers', [])
+
+	findings = []
+
+	for obj_name, info in all_records.items():
+		count = info.get('total_count', 0) if isinstance(info, dict) else 0
+		findings.append({
+			'title': f'Guest-accessible Salesforce object: {obj_name}',
+			'severity': _object_severity(obj_name, count),
+			'description': (
+				f'The Salesforce object "{obj_name}" is accessible via the Aura API '
+				f'without authentication. {count} record(s) were retrieved.'
+			),
+			'owasp_ref': 'API1:2023',
+			'affected_objects': [obj_name],
+			'evidence': f'Object: {obj_name}, Records: {count}',
+		})
+
+	gql_only = {k: v for k, v in all_records_gql.items() if k not in all_records}
+	for obj_name, info in gql_only.items():
+		count = info.get('total_count', 0) if isinstance(info, dict) else 0
+		findings.append({
+			'title': f'GraphQL uiapi exposure: {obj_name}',
+			'severity': _object_severity(obj_name, count),
+			'description': (
+				f'"{obj_name}" is readable via GraphQL (uiapi) by unauthenticated guests. '
+				f'{count} record(s) accessible.'
+			),
+			'owasp_ref': 'API5:2023',
+			'affected_objects': [obj_name],
+			'evidence': f'GraphQL Object: {obj_name}, Records: {count}',
+		})
+
+	for url in recordlists:
+		findings.append({
+			'title': 'Exposed UI record list URL accessible to guests',
+			'severity': 'low',
+			'description': 'A browseable record list URL was discovered that may render records for unauthenticated users.',
+			'owasp_ref': 'API1:2023',
+			'affected_objects': [],
+			'evidence': url,
+		})
+
+	for ctrl in custom_ctrl:
+		findings.append({
+			'title': f'Custom Apex controller accessible: {ctrl}',
+			'severity': 'high',
+			'description': f'Custom Apex controller "{ctrl}" is accessible via the Aura API.',
+			'owasp_ref': 'API5:2023',
+			'affected_objects': [ctrl],
+			'evidence': f'Controller: {ctrl}',
+		})
+
+	if getattr(aura, 'soap_enabled', False):
+		findings.append({
+			'title': 'SOAP API is enabled',
+			'severity': 'medium',
+			'description': 'The Salesforce SOAP API endpoint is reachable. This enables credential-based brute-force attacks.',
+			'owasp_ref': 'API8:2023',
+			'affected_objects': [],
+			'evidence': f'{aura.url}/services/Soap/',
+		})
+
+	return findings
+
+
+def _calculate_risk_score(findings):
+	weights = {'critical': 30, 'high': 20, 'medium': 10, 'low': 3, 'info': 0}
+	return min(100, sum(weights.get(f.get('severity', 'info'), 0) for f in findings))
+
+
+def _escape_html(text):
+	if text is None:
+		return ''
+	return (
+		str(text)
+		.replace('&', '&amp;')
+		.replace('<', '&lt;')
+		.replace('>', '&gt;')
+		.replace('"', '&quot;')
+	)
+
+
+def _risk_label(score):
+	if score >= 80:
+		return 'Critical'
+	if score >= 60:
+		return 'High'
+	if score >= 40:
+		return 'Medium'
+	return 'Low'
+
+
+def _write_scan_report_html(output_dir, target_url, findings, risk_score, authenticated_mode):
+	severity_counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+	for finding in findings:
+		severity = finding.get('severity', 'info')
+		severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+	rows = []
+	for finding in findings:
+		rows.append(
+			'<tr>'
+			f'<td>{_escape_html(finding.get("title", ""))}</td>'
+			f'<td>{_escape_html(finding.get("severity", ""))}</td>'
+			f'<td>{_escape_html(finding.get("owasp_ref", ""))}</td>'
+			f'<td>{_escape_html(finding.get("description", ""))}</td>'
+			'</tr>'
+		)
+	findings_rows = ''.join(rows) if rows else '<tr><td colspan="4">No findings detected.</td></tr>'
+
+	html = f"""<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"UTF-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
+  <title>Aura Inspector - Security Scan Report</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }}
+    h1, h2 {{ margin-bottom: 8px; }}
+    .meta {{ margin: 8px 0 16px; color: #4b5563; }}
+    .stats {{ display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }}
+    .card {{ border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; }}
+    table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+    th, td {{ border: 1px solid #d1d5db; text-align: left; padding: 8px; vertical-align: top; }}
+    th {{ background: #f3f4f6; }}
+    .badge {{ display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #9ca3af; font-size: 12px; }}
+  </style>
+</head>
+<body>
+  <h1>Aura Inspector - Security Scan Report</h1>
+  <div class=\"meta\">Target: {_escape_html(target_url)}<br/>Scan Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}<br/>Mode: {'Authenticated' if authenticated_mode else 'Guest / Unauthenticated'}</div>
+
+  <div class=\"stats\">
+    <div class=\"card\"><strong>Risk Score</strong><br/>{risk_score} / 100 ({_risk_label(risk_score)})</div>
+    <div class=\"card\"><strong>Total Findings</strong><br/>{len(findings)}</div>
+    <div class=\"card\"><strong>Severity Counts</strong><br/>Critical: {severity_counts['critical']} | High: {severity_counts['high']} | Medium: {severity_counts['medium']} | Low: {severity_counts['low']} | Info: {severity_counts['info']}</div>
+  </div>
+
+  <h2>Findings</h2>
+  <table>
+    <thead>
+      <tr><th>Title</th><th>Severity</th><th>OWASP</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      {findings_rows}
+    </tbody>
+  </table>
+</body>
+</html>"""
+
+	report_path = os.path.join(output_dir, 'scan-report.html')
+	with open(report_path, 'w', encoding='utf-8') as f:
+		f.write(html)
+	logger.info(f'Generated scan report: {report_path}')
+
+
+def _write_autofix_remediation_markdown(output_dir, target_url, findings, risk_score, authenticated_mode):
+	from ai_agents.remediation_advisor import RemediationAdvisor  # noqa: PLC0415
+
+	advisor = RemediationAdvisor()
+	lines = [
+		'# Aura Inspector - Salesforce Auto-Fix Remediation Guide',
+		'',
+		f'**Target:** `{target_url}`',
+		f'**Scan Date:** {datetime.now().strftime("%Y-%m-%d")}',
+		f'**Mode:** {"Authenticated" if authenticated_mode else "Guest / Unauthenticated"}',
+		f'**Risk Score:** {risk_score} / 100 ({_risk_label(risk_score)})',
+		'',
+		'---',
+		'',
+	]
+
+	if not findings:
+		lines.append('No findings were detected. No remediation actions are required.')
+	else:
+		for index, finding in enumerate(findings, start=1):
+			simple_finding = type('F', (), {'owasp_ref': finding.get('owasp_ref', '')})()
+			remediation = advisor.get_remediation(simple_finding)
+			lines.extend([
+				f'## FIX-{index:02d} - {finding.get("title", "Untitled finding")}',
+				'',
+				f'**Severity:** `{finding.get("severity", "info").upper()}`',
+				f'**OWASP:** `{finding.get("owasp_ref", "N/A")}`',
+				'',
+				'### Summary',
+				finding.get('description', 'No description provided.'),
+				'',
+				'### Salesforce Setup Steps',
+			])
+			for step_no, step in enumerate(remediation.get('setup_steps', []), start=1):
+				lines.append(f'{step_no}. {step}')
+			lines.extend([
+				'',
+				'### Apex / SOQL Example',
+				'```apex',
+				remediation.get('apex_example', '// No code example available'),
+				'```',
+				'',
+				'---',
+				'',
+			])
+
+	autofix_path = os.path.join(output_dir, 'AUTOFIX_REMEDIATION.md')
+	with open(autofix_path, 'w', encoding='utf-8') as f:
+		f.write('\n'.join(lines).strip() + '\n')
+	logger.info(f'Generated remediation guide: {autofix_path}')
+
+
+def save_audit_data(scan_data, output_dir, target_url, authenticated_mode):
 	aura = scan_data['aura']
 	write_records_to_directory(scan_data['all_records'], output_dir, "records")
 	write_records_to_directory(scan_data['all_records_gql'], output_dir, "gql_records")
@@ -357,7 +570,11 @@ def save_audit_data(scan_data, output_dir):
 	write_misc_to_directory(scan_data['home_urls'], output_dir, sub_dir='misc',file_name='homeurls.json')
 	write_misc_to_directory(aura.csp_trusted, output_dir, sub_dir='misc',file_name='csp_trusted_sites.json')
 	write_misc_to_directory(scan_data['custom_controllers'], output_dir, sub_dir='misc',file_name='custom_controllers.json')
-	logger.info(f'Please check the {output_dir} folder for retrieved records, object home URLs and records UI list record URLs')
+	findings = _build_cli_findings(scan_data, aura)
+	risk_score = _calculate_risk_score(findings)
+	_write_scan_report_html(output_dir, target_url, findings, risk_score, authenticated_mode)
+	_write_autofix_remediation_markdown(output_dir, target_url, findings, risk_score, authenticated_mode)
+	logger.info(f'Please check the {output_dir} folder for retrieved records, scan-report.html and AUTOFIX_REMEDIATION.md')
 	logger.warning('The object home URLs and records UI list need to be checked manually at the moment to verify whether any sensitive data or panel is available')
 
 
@@ -394,7 +611,7 @@ def audit(url, cookies, object_list, output_dir, proxy, fetch_max_data=False, in
 					logger.warning('Invalid choice, try again')
 
 	if output_dir:
-		save_audit_data(scan_data, output_dir)
+		save_audit_data(scan_data, output_dir, url, authenticated_mode)
 
 	summary = summarize_scan(scan_name, scan_data['all_objects'], all_records, all_records_gql)
 	return {**summary, 'scan_data': scan_data}

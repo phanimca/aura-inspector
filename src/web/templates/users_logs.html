@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Users and Logs - Salesforce Security AI Scanner{% endblock %}
+
+{% block extra_head %}
+<style>
+.log-row { transition: background .15s; }
+.log-row:hover { background: var(--bg-card-hover); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+<div class="container">
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h4 class="fw-bold mb-0"><i class="bi bi-people me-2" style="color:#58a6ff;"></i>Users and Logs</h4>
+      <p class="text-muted small mb-0">Admin view of registered users and recent scan activity logs.</p>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-number">{{ summary.total_users }}</div>
+        <div class="stat-label"><i class="bi bi-people-fill me-1"></i>Users</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-number" style="color:#d29922;">{{ summary.admin_users }}</div>
+        <div class="stat-label"><i class="bi bi-shield-lock-fill me-1"></i>Admins</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-number">{{ summary.total_scans }}</div>
+        <div class="stat-label"><i class="bi bi-radar me-1"></i>Total Scans</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-number" style="color:#58a6ff;">{{ summary.active_scans }}</div>
+        <div class="stat-label"><i class="bi bi-arrow-repeat me-1"></i>Active Scans</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card p-0 mb-4">
+    <div class="p-3 border-bottom" style="border-color:var(--border-muted)!important;">
+      <h6 class="fw-semibold mb-0"><i class="bi bi-person-lines-fill me-1"></i>Registered Users</h6>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dark table-hover mb-0" style="background:transparent;">
+        <thead>
+          <tr style="color:#8b949e;font-size:.78rem;">
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Joined</th>
+            <th>Total Scans</th>
+            <th>Completed</th>
+            <th>Last Scan</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td class="fw-semibold">{{ u.username }}</td>
+            <td style="color:#8b949e;">{{ u.email }}</td>
+            <td>
+              {% if u.is_admin %}
+              <span class="badge bg-warning text-dark">Admin</span>
+              {% else %}
+              <span class="badge" style="background:#30363d;color:#c9d1d9;">User</span>
+              {% endif %}
+            </td>
+            <td style="color:#8b949e;">{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '-' }}</td>
+            <td>{{ u.total_scans or 0 }}</td>
+            <td>{{ u.completed_scans or 0 }}</td>
+            <td style="color:#8b949e;">{{ u.last_scan_at.strftime('%Y-%m-%d %H:%M') if u.last_scan_at else '-' }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">No users found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card p-0">
+    <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="border-color:var(--border-muted)!important;">
+      <h6 class="fw-semibold mb-0"><i class="bi bi-journal-text me-1"></i>Recent Logs (Last 100 Scan Jobs)</h6>
+      <span class="text-muted small">Source: scan_jobs table</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dark table-hover mb-0" style="background:transparent;">
+        <thead>
+          <tr style="color:#8b949e;font-size:.78rem;">
+            <th>Scan</th>
+            <th>User</th>
+            <th>Target</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Started</th>
+            <th>Finished</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+          <tr class="log-row" style="font-size:.83rem;">
+            <td><a href="/scans/{{ log.id }}" style="color:#58a6ff;text-decoration:none;">#{{ log.id }}</a></td>
+            <td>
+              <div class="fw-semibold">{{ log.username }}</div>
+              <div class="text-muted small">{{ log.email }}</div>
+            </td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              {{ log.target_url | replace('https://', '') }}
+            </td>
+            <td>
+              {% if log.scan_type == 'auth' %}
+              <span class="badge" style="background:#d2992222;color:#d29922;border:1px solid #d2992244;font-size:.7rem;">Auth</span>
+              {% else %}
+              <span class="badge" style="background:#388bfd22;color:#79c0ff;border:1px solid #388bfd44;font-size:.7rem;">Guest</span>
+              {% endif %}
+            </td>
+            <td class="status-{{ log.status }}">{{ log.status | title }}</td>
+            <td style="color:#8b949e;">{{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '-' }}</td>
+            <td style="color:#8b949e;">
+              {% if log.completed_at %}
+              {{ log.completed_at.strftime('%Y-%m-%d %H:%M') }}
+              {% elif log.cancelled_at %}
+              {{ log.cancelled_at.strftime('%Y-%m-%d %H:%M') }}
+              {% else %}
+              -
+              {% endif %}
+            </td>
+            <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f85149;">
+              {{ log.error_message or '-' }}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center text-muted py-4">No scan logs found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+{% endblock %}

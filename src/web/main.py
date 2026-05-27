@@ -413,6 +413,67 @@ def connected_apps_list(request: Request, db: Session = Depends(get_db)):
 	))
 
 
+@app.get('/admin/users-logs', response_class=HTMLResponse)
+def admin_users_and_logs(request: Request, db: Session = Depends(get_db)):
+	user = _get_user(request, db)
+	if not user:
+		return RedirectResponse('/login', status_code=302)
+	if not user.is_admin:
+		return RedirectResponse('/dashboard', status_code=302)
+
+	from sqlalchemy import case, func  # noqa: PLC0415
+
+	users = (
+		db.query(
+			User.id,
+			User.username,
+			User.email,
+			User.is_admin,
+			User.created_at,
+			func.count(ScanJob.id).label('total_scans'),
+			func.sum(case((ScanJob.status == 'completed', 1), else_=0)).label('completed_scans'),
+			func.max(ScanJob.created_at).label('last_scan_at'),
+		)
+		.outerjoin(ScanJob, ScanJob.user_id == User.id)
+		.group_by(User.id, User.username, User.email, User.is_admin, User.created_at)
+		.order_by(User.created_at.desc())
+		.all()
+	)
+
+	logs = (
+		db.query(
+			ScanJob.id,
+			ScanJob.target_url,
+			ScanJob.scan_type,
+			ScanJob.status,
+			ScanJob.created_at,
+			ScanJob.completed_at,
+			ScanJob.cancelled_at,
+			ScanJob.error_message,
+			User.username,
+			User.email,
+		)
+		.join(User, User.id == ScanJob.user_id)
+		.order_by(ScanJob.created_at.desc())
+		.limit(100)
+		.all()
+	)
+
+	summary = {
+		'total_users': len(users),
+		'admin_users': sum(1 for row in users if row.is_admin),
+		'total_scans': sum(int(row.total_scans or 0) for row in users),
+		'active_scans': sum(1 for row in logs if row.status in ('pending', 'running')),
+	}
+
+	return templates.TemplateResponse(request, 'users_logs.html', _ctx(
+		user,
+		users=users,
+		logs=logs,
+		summary=summary,
+	))
+
+
 @app.post('/connected-apps')
 def connected_apps_create(
 	request: Request,
