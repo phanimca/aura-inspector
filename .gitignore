@@ -133,7 +133,8 @@ records_found/
 # Output folders created during testing
 output/
 out/*
-
+results/
+results/*
 .vercel
 .env*.local
 .env.vercel.*
