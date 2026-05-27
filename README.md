@@ -123,14 +123,24 @@ For local development, create a `.env` file at the repo root (it is git-ignored)
 
 ### Required for Salesforce authenticated scans
 
-Create a Salesforce **Connected App** with OAuth enabled.  
-Set the **Callback URL** to `https://<your-app>.vercel.app/auth/sf/callback`.  
-Enable scopes: **api**, **web**.
+This tool uses the **OAuth 2.0 Authorization Code + PKCE (S256)** flow — the same
+approach used by the Salesforce CLI `sf org login web` command.  
+**No Consumer Secret is required or stored.**
+
+Create a Salesforce **Connected App** (or External Client App, Spring '26+) and configure it:
+
+1. **Setup → App Manager → New Connected App**
+2. Enable OAuth Settings.
+3. Set **Callback URL** to `https://<your-app>.vercel.app/auth/sf/callback`  
+   (and `http://localhost:8484/callback` for the CLI browser flow).
+4. Add scopes: **api**, **web**.
+5. In **OAuth Policies**, uncheck **"Require Secret for Web Server Flow"**  
+   *(or enable "Require PKCE")* — this allows PKCE without a client secret.
+6. Note the **Consumer Key** only — the Consumer Secret is not needed.
 
 | Variable | Example | Description |
 |---|---|---|
 | `SF_CLIENT_ID` | `3MVG9...` | Connected App Consumer Key |
-| `SF_CLIENT_SECRET` | `ABC123...` | Consumer Secret (optional for public/PKCE apps) |
 | `SF_INSTANCE_URL` | `https://login.salesforce.com` | Login URL — use `https://test.salesforce.com` for sandbox. Defaults to production. |
 
 ### Required for AI-powered analysis (GPT-4o / GitHub Models)
@@ -176,7 +186,6 @@ DATABASE_URL          = postgresql://...          (Production + Preview)
 SECRET_KEY            = <random 32-byte hex>      (Production + Preview)
 APP_BASE_URL          = https://<your-alias>.vercel.app  (Production only)
 SF_CLIENT_ID          = <Connected App key>       (Production + Preview)
-SF_CLIENT_SECRET      = <Consumer secret>         (Production + Preview)
 OPENAI_API_KEY        = <GitHub PAT or sk-...>    (Production + Preview)
 OPENAI_BASE_URL       = https://models.github.ai/inference  (Production + Preview)
 OPENAI_MODEL          = openai/gpt-4o-mini        (Production + Preview)
@@ -193,9 +202,8 @@ DATABASE_URL=sqlite:///./data/aura_inspector.db
 SECRET_KEY=replace-with-a-long-random-string
 APP_BASE_URL=http://localhost:8080
 
-# Salesforce OAuth
+# Salesforce OAuth (PKCE — no client secret needed)
 SF_CLIENT_ID=3MVG9...
-SF_CLIENT_SECRET=ABC123...
 
 # AI analysis via GitHub Models (free)
 OPENAI_API_KEY=ghp_your_github_pat
@@ -277,6 +285,23 @@ python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com
 python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com -k --no-gql -o ./results
 ```
 
+### Authenticated scan via Salesforce OAuth (PKCE browser flow)
+
+```bash
+# Opens your default browser to Salesforce login; session cookie is captured automatically.
+# No Consumer Secret needed — PKCE replaces the shared secret.
+python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com \
+  --oauth --sf-client-id 3MVG9...
+
+# Sandbox org
+python src/aura_cli.py -U phani -u https://yoursite.sandbox.my.salesforce.com \
+  --oauth --sf-client-id 3MVG9... --sf-instance-url https://test.salesforce.com
+```
+
+> **Connected App requirement:** In the Connected App OAuth Policies, uncheck  
+> **"Require Secret for Web Server Flow"** (or enable **"Require PKCE"**).  
+> Add `http://localhost:8484/callback` as a Callback URL.
+
 ### Authenticated scan with session cookie
 
 ```bash
@@ -321,6 +346,9 @@ python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com \
 | `--aura` | Explicit Aura endpoint path override (e.g. `/s/sfsites/aura`) |
 | `--context` | Custom `aura.context` value for POST requests |
 | `--token` | Custom `aura.token` value for POST requests |
+| `--oauth` | Authenticate via Salesforce OAuth 2.0 PKCE browser flow (opens browser, no secret required) |
+| `--sf-instance-url` | Salesforce login URL for OAuth (default: `https://login.salesforce.com`; use `https://test.salesforce.com` for sandbox) |
+| `--sf-client-id` | Connected App Consumer Key (required with `--oauth`) |
 | `--no-gql` | Skip GraphQL record-count probes |
 | `--no-banner` | Suppress the ASCII banner |
 | `-d / --debug` | Print debug-level output |
@@ -330,7 +358,7 @@ python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com \
 
 ## Web Dashboard
 
-The web dashboard provides a persistent scan history with authentication, a live scan status page, a severity chart dashboard, and printable HTML reports.
+The web dashboard provides a persistent scan history with authentication, a live scan status page, a severity chart dashboard, printable HTML reports, and Connected Apps management for Salesforce OAuth authenticated scans.
 
 > **Live hosted version:** [https://phani-aura-inspector.vercel.app](https://phani-aura-inspector.vercel.app)
 > Default login: `phani.dummy@hotmail.com` / configured via `DEFAULT_ADMIN_PASSWORD` env var.
@@ -378,6 +406,8 @@ Key variables for the web dashboard:
 | GET | `/scans/{id}` | Scan detail + live status |
 | GET | `/scans/{id}/status` | JSON polling endpoint |
 | GET | `/reports/{id}` | Printable HTML report |
+| GET/POST | `/connected-apps` | Admin: manage Connected Apps for OAuth scans |
+| GET | `/api/connected-apps` | JSON list of Connected Apps for scan form dropdown |
 | GET | `/api/stats` | JSON stats for dashboard charts |
 
 ---
@@ -518,9 +548,8 @@ DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
 SECRET_KEY=replace-with-a-long-random-string
 APP_BASE_URL=https://your-domain.com
 
-# Salesforce OAuth
+# Salesforce OAuth (PKCE — no client secret needed)
 SF_CLIENT_ID=your-connected-app-client-id
-SF_CLIENT_SECRET=your-consumer-secret
 SF_INSTANCE_URL=https://yourinstance.my.salesforce.com
 
 # AI analysis via GitHub Models
