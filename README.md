@@ -24,17 +24,18 @@ For background, see the Mandiant blog post: [Auditing Salesforce Aura Data Expos
 ## Table of Contents
 
 1. [Features](#features)
-2. [Architecture](#architecture)
-3. [Requirements](#requirements)
-4. [Environment Variables](#environment-variables)
-5. [Installation](#installation)
-6. [CLI Usage](#cli-usage)
-7. [Web Dashboard](#web-dashboard)
-8. [Gradio UI](#gradio-ui)
-9. [MCP Server](#mcp-server)
-10. [Docker Compose](#docker-compose)
-11. [Testing](#testing)
-12. [Licenses](#licenses)
+2. [Latest Release](#latest-release)
+3. [Architecture](#architecture)
+4. [Requirements](#requirements)
+5. [Environment Variables](#environment-variables)
+6. [Installation](#installation)
+7. [CLI Usage](#cli-usage)
+8. [Web Dashboard](#web-dashboard)
+9. [Gradio UI](#gradio-ui)
+10. [MCP Server](#mcp-server)
+11. [Docker Compose](#docker-compose)
+12. [Testing](#testing)
+13. [Licenses](#licenses)
 
 ---
 
@@ -50,6 +51,17 @@ For background, see the Mandiant blog post: [Auditing Salesforce Aura Data Expos
 - **Remediation advisor** — maps each finding to OWASP API Security 2023 refs, Salesforce Setup steps, and Apex code examples
 - **Web dashboard** — FastAPI app with SQLite persistence, JWT auth, scan history, and printable HTML reports
 - **MCP server** — FastMCP server exposing all scanner capabilities as tools consumable by Claude Desktop, VS Code Copilot, and any MCP-compatible AI assistant
+
+---
+
+## Latest Release
+
+- **Current PyPI version:** `0.3.6`
+- **Released:** 2026-05-27
+- **Highlights:**
+  - Refreshed package release and deployment flow
+  - Published new package artifacts for `phani-aura-inspector`
+  - Deployed latest web app to production at [https://phani-aura-inspector.vercel.app](https://phani-aura-inspector.vercel.app)
 
 ---
 
@@ -93,7 +105,7 @@ aura-inspector/
 
 ## Requirements
 
-- **Python 3.12+**
+- **Python 3.11+**
 - **Windows**: `.venv\Scripts\python.exe` | **Linux/macOS**: `.venv/bin/python`
 
 | Surface | Extra requirements |
@@ -158,15 +170,6 @@ Without these, every scan falls back to rule-based risk scoring automatically.
 1. Generate a GitHub Personal Access Token with **Models → Read** permission.
 2. Set the three variables above in Vercel.
 3. No Connected App, no paid subscription needed.
-
-### Optional — have safe defaults
-
-| Variable | Default | Override when |
-|---|---|---|
-| `DEFAULT_ADMIN_USERNAME` | `phani` | You want a different admin username |
-| `DEFAULT_ADMIN_EMAIL` | `phani.dummy@hotmail.com` | You want a different admin email |
-| `DEFAULT_ADMIN_PASSWORD` | `Admin@123` | **Change this** — the default is public |
-| `WEB_PORT` | `8080` | Running the web server locally on a different port |
 
 ### Set automatically by Vercel (do not add manually)
 
@@ -361,7 +364,6 @@ python src/aura_cli.py -U phani -u https://yoursite.my.salesforce.com \
 The web dashboard provides a persistent scan history with authentication, a live scan status page, a severity chart dashboard, printable HTML reports, and Connected Apps management for Salesforce OAuth authenticated scans.
 
 > **Live hosted version:** [https://phani-aura-inspector.vercel.app](https://phani-aura-inspector.vercel.app)
-> Default login: `phani.dummy@hotmail.com` / configured via `DEFAULT_ADMIN_PASSWORD` env var.
 
 ### Start
 
